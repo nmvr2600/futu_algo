@@ -515,7 +515,7 @@ class HKEXInterface:
                                 dtype={'Stock Code': str})
         input_csv.dropna(subset=['Stock Code'], inplace=True)
         input_csv.drop(input_csv.columns[-1], axis=1, inplace=True)
-        input_csv.set_index('Stock Code')
+        input_csv.set_index('Stock Code', inplace=True)
         return input_csv
 
     @staticmethod
@@ -544,5 +544,5 @@ class HKEXInterface:
             Return Full Dict of the Board Lot Size (Minimum Trading Unit) for each stock E.g. {'HK.00001': 500}
         """
         input_csv = HKEXInterface.get_security_df_full()
-        return {('HK.' + row['Stock Code']): int(row['Board Lot'].replace(',', '')) for index, row in
+        return {('HK.' + index): int(row['Board Lot'].replace(',', '')) for index, row in
                 input_csv[input_csv['Category'] == 'Equity'].iterrows()}

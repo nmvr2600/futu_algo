@@ -140,21 +140,9 @@ dmypy.json
 cython_debug/
 
 /.idea
-/data/*/*.*
-!/data/HK.09988/HK.09988_2022-04-11_1M.*
-!/data/HK.09988/HK.09988_2022-04-12_1M.*
-!/data/HK.09988/HK.09988_2022-04-13_1M.*
-!/data/HK.09988/HK.09988_2021_1D.*
-!/data/HK.09988/HK.09988_2022_1W.*
-!/data/HK.00700/HK.00700_2022-04-11_1M.*
-!/data/HK.00700/HK.00700_2022-04-12_1M.*
-!/data/HK.00700/HK.00700_2022-04-13_1M.*
-!/data/HK.00700/HK.00700_2021_1D.*
-!/data/HK.00700/HK.00700_2022_1W.*
-!/data/Stock_Pool/ListOfSecurities.*
-!/data/Stock_Pool/stock_basic_info.parquet
-!/data/Stock_Pool/stock_owner_plate.parquet
-!/data/Stock_Pool/stock_plate_list.parquet
+/data/*
+!/data/Stock_Pool/
+!/data/Stock_Pool/*
 config/config.ini
 config/stock_strategy_map.yml
 

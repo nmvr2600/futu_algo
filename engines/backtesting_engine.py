@@ -27,7 +27,7 @@ import pandas as pd
 from engines.data_engine import DataProcessingInterface, HKEXInterface
 from strategies.Strategies import Strategies
 from util import logger
-from util.global_vars import *
+from util.global_vars import config, DATETIME_FORMAT_DW
 
 warnings.filterwarnings('ignore')
 
@@ -126,7 +126,7 @@ class BacktestingEngine:
             # Remove duplicated indices
             ta_backtesting_data[stock_code] = ta_backtesting_data[stock_code][
                 ~ta_backtesting_data[stock_code].index.duplicated(keep='first')]
-        ta_backtesting_data['HK.01997'].to_csv("STEP 2.csv")
+                    # ta_backtesting_data['HK.01997'].to_csv("STEP 2.csv")
 
         # Gather all unique dates
         sequence_time = list(unique_time)
@@ -166,9 +166,9 @@ class BacktestingEngine:
                         # Update Holding Capital
                         self.capital -= current_price * qty
                         # Update Transaction History Dataframe
-                        self.transactions = self.transactions.append(
-                            pd.Series([row['time_key'], stock_code, current_price, qty, 'BUY'],
-                                      index=self.transactions.columns), ignore_index=True)
+                        self.transactions = pd.concat([self.transactions,
+                            pd.DataFrame([pd.Series([row['time_key'], stock_code, current_price, qty, 'BUY'],
+                                      index=self.transactions.columns)])], ignore_index=True)
                         self.default_logger.info(f"SIMULATE BUY ORDER for {stock_code} using PRICE {row['close']}")
                     elif self.positions.get(stock_code, 0) != 0:
                         self.default_logger.info(
@@ -189,9 +189,9 @@ class BacktestingEngine:
 
                         self.returns_df.loc[str(current_date), stock_code] += profit
                         self.capital += current_price * qty
-                        self.transactions = self.transactions.append(
-                            pd.Series([row['time_key'], stock_code, current_price, qty, 'SELL'],
-                                      index=self.transactions.columns), ignore_index=True)
+                        self.transactions = pd.concat([self.transactions,
+                            pd.DataFrame([pd.Series([row['time_key'], stock_code, current_price, qty, 'SELL'],
+                                      index=self.transactions.columns)])], ignore_index=True)
                         self.default_logger.info(f"SIMULATE SELL ORDER FOR {stock_code} using PRICE {row['close']}")
                         self.default_logger.info(f"PROFIT earned: {profit}")
                         # Update Positions
@@ -201,10 +201,122 @@ class BacktestingEngine:
         time_key = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
         self.returns_df.to_csv(f'./backtesting_report/{time_key}_Returns.csv')
         self.transactions.to_csv(f'./backtesting_report/{time_key}_Transactions.csv')
-
-    # def create_tear_sheet(self):
-    #     return_ser = pd.read_csv('output.csv', index_col=0, header=0)
-    #     return_ser.index = pd.to_datetime(return_ser.index)
-    #     # pf.create_returns_tear_sheet(return_ser['HK.00001'])
-    #     with open("data.html", "w") as file:
-    #         file.write(pf.create_simple_tear_sheet(returns=return_ser['HK.00001']))
+        
+    def create_html_report(self):
+        """Create a simple HTML report from the backtesting results"""
+        import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')  # Use non-interactive backend
+        
+        # Create a returns series
+        returns_ser = self.returns_df['returns'].copy()
+        returns_ser.index = pd.to_datetime(returns_ser.index)
+        
+        # Remove any NaN or zero values
+        returns_ser = returns_ser.dropna()
+        
+        # Check if we have any data to plot
+        if len(returns_ser) == 0:
+            print("No return data available for HTML report generation")
+            return
+            
+        # Generate plots
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+        
+        # Plot 1: Cumulative returns
+        cumulative_returns = (1 + returns_ser).cumprod()
+        ax1.plot(cumulative_returns.index, cumulative_returns.values)
+        ax1.set_title('Cumulative Returns')
+        ax1.set_xlabel('Date')
+        ax1.set_ylabel('Cumulative Return')
+        ax1.grid(True)
+        
+        # Plot 2: Daily returns
+        ax2.plot(returns_ser.index, returns_ser.values)
+        ax2.set_title('Daily Returns')
+        ax2.set_xlabel('Date')
+        ax2.set_ylabel('Daily Return')
+        ax2.grid(True)
+        
+        plt.tight_layout()
+        
+        # Save plots
+        time_key = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
+        plt.savefig(f'./backtesting_report/{time_key}_Returns_Chart.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Try to get trade count and PnL from strategy if available
+        strategy_info = ""
+        if hasattr(self.strategy, 'trade_count'):
+            for stock_code, count in self.strategy.trade_count.items():
+                strategy_info += f"<p>Trade Count for {stock_code}: {count}</p>"
+        if hasattr(self.strategy, 'total_pnl'):
+            for stock_code, pnl in self.strategy.total_pnl.items():
+                strategy_info += f"<p>Total PnL for {stock_code}: {pnl:.2f} HKD</p>"
+        
+        # Generate HTML report
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backtesting Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1, h2 {{ color: #333; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        th {{ background-color: #f2f2f2; }}
+        .summary {{ background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        img {{ max-width: 100%; height: auto; }}
+    </style>
+</head>
+<body>
+    <h1>Backtesting Report</h1>
+    <p>Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+    
+    <div class="summary">
+        <h2>Summary Statistics</h2>
+        <p>Total Transactions: {len(self.transactions)}</p>
+        <p>Total Return: {returns_ser.sum():.2f}</p>
+        <p>Average Daily Return: {returns_ser.mean():.4f}</p>
+        <p>Standard Deviation: {returns_ser.std():.4f}</p>
+        {strategy_info}
+    </div>
+    
+    <h2>Returns Chart</h2>
+    <img src="{time_key}_Returns_Chart.png" alt="Returns Chart">
+    
+    <h2>Transactions</h2>
+    <table>
+        <tr>
+            <th>Time</th>
+            <th>Stock Code</th>
+            <th>Price</th>
+            <th>Quantity</th>
+            <th>Side</th>
+        </tr>
+"""
+        
+        # Add transactions to HTML
+        for _, row in self.transactions.iterrows():
+            html_content += f"""
+        <tr>
+            <td>{row['time_key']}</td>
+            <td>{row['code']}</td>
+            <td>{row['price']:.4f}</td>
+            <td>{row['quantity']:.2f}</td>
+            <td>{row['trd_side']}</td>
+        </tr>
+"""
+        
+        html_content += """
+    </table>
+</body>
+</html>
+"""
+        
+        # Save HTML report
+        with open(f'./backtesting_report/{time_key}_Report.html', 'w') as f:
+            f.write(html_content)
+            
+        print(f"HTML report saved: {time_key}_Report.html")
+        print(f"Returns chart saved: {time_key}_Returns_Chart.png")
