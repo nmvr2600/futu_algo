@@ -188,6 +188,37 @@ China (Shanghai and Shenzhen) Stock Market
 
     python main_backend.py -f Volume_Threshold Price_Threshold -en MACD_Cross_Technique -m HK CHINA
 
+## Chanlun Stock Selector
+
+The system now includes a Chanlun (缠论) stock selector that can identify potential buy points based on Chanlun theory.
+Chanlun theory emphasizes the relationship between different levels, where higher-level buy/sell points are often composed 
+of lower-level trends.
+
+```python
+from custom.filters.Chanlun_Filter import ChanlunFilter
+from engines.stock_filter_engine import StockFilter
+
+# Create the Chanlun filter for first buy point type with day as main level and 30min as sub level
+chanlun_filter = ChanlunFilter(buy_point_type=1, main_level="day", sub_level="30min")
+
+# Create stock filter with the Chanlun filter
+stock_filter = StockFilter([chanlun_filter], stock_list)
+
+# Get filtered stocks
+selected_stocks = stock_filter.get_filtered_equity_pools()
+```
+
+The Chanlun filter supports three types of buy points:
+1. First buy point (第一类买点)
+2. Second buy point (第二类买点)
+3. Third buy point (第三类买点)
+
+And supports multi-level analysis:
+- Main level (主级别): e.g., "day", "week"
+- Sub level (次级别): e.g., "30min", "5min"
+
+See `custom/chanlun_selector_demo.py` for a complete example.
+
 ## GUI Usages
 
 Start the GUI with `main.py` (**NOT FINISHED YET**)
@@ -231,7 +262,7 @@ as an express or implied promise or guarantee.
 This repository and its author are not responsible for any losses incurred as a result of using any of our trading
 strategies. Loss-limiting strategies such as stop loss orders may not be effective because market conditions or
 technological issues may make it impossible to execute such orders. Likewise, strategies using combinations of options
-and/or futures positions such as “spread” or “straddle” trades may be just as risky as simple long and short positions.
+and/or futures positions such as "spread" or "straddle" trades may be just as risky as simple long and short positions.
 Information provided in this correspondence is intended solely for informational purposes and is obtained from sources
 believed to be reliable. Information is in no way guaranteed. No guarantee of any kind is implied or possible where
 projections of future conditions are attempted.

@@ -44,7 +44,36 @@ class StockFilter:
         except Exception as e:
             # self.default_logger.error(f'Exception Happened: {e}')
             return None
-        quant_data.columns = [item.lower().strip() for item in quant_data]
+            
+        # 标准化列名以匹配缠论处理器的期望
+        if not quant_data.empty:
+            # 确保索引是日期时间类型
+            if 'Date' in quant_data.columns:
+                quant_data = quant_data.set_index('Date')
+            elif 'date' in quant_data.columns:
+                quant_data = quant_data.set_index('date')
+                
+            # 重命名列以匹配缠论处理器的期望
+            quant_data = quant_data.rename(columns={
+                'Open': 'open',
+                'High': 'high',
+                'Low': 'low',
+                'Close': 'close',
+                'Volume': 'volume'
+            })
+            
+            # 确保有time_key列
+            if 'time_key' not in quant_data.columns:
+                quant_data['time_key'] = quant_data.index.strftime('%Y-%m-%d')
+                
+            # 确保所有必要的列都存在
+            required_columns = ['open', 'close', 'high', 'low', 'volume', 'time_key']
+            for col in required_columns:
+                if col not in quant_data.columns:
+                    self.default_logger.warning(f"Missing column {col} in data for {equity_code}")
+                    return None
+                    
+        quant_data.columns = [item.lower().strip() for item in quant_data.columns]
         # info_data = YahooFinanceInterface.get_stock_info(equity_code)
         info_data = {}
         if all([stock_filter.validate(quant_data, info_data) for stock_filter in self.stock_filters]):
