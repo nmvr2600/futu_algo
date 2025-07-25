@@ -37,6 +37,8 @@ class AdvancedChanlunVisualizer:
         self.colors = {
             "up_stroke": "#1f77b4",
             "down_stroke": "#ff7f0e",
+            "up_segment": "#ff4757",
+            "down_segment": "#2ed573",
             "top_fractal": "#d62728",
             "bottom_fractal": "#2ca02c",
             "central": "#9467bd",
@@ -558,6 +560,10 @@ class AdvancedChanlunVisualizer:
         # 绘制中枢
         self._plot_centrals_detailed(ax, df, result["centrals"], index_map)
 
+        # 绘制线段
+        if "segments" in result:
+            self._plot_segments_detailed(ax, df, result["segments"], index_map)
+
         # 标记背驰信号
         self._plot_divergences(ax, df, divergences, index_map)
 
@@ -706,6 +712,7 @@ class AdvancedChanlunVisualizer:
                 color=color,
                 linewidth=linewidth,
                 alpha=0.8,
+                linestyle='--',
             )
 
             # 添加笔的标签
@@ -715,6 +722,59 @@ class AdvancedChanlunVisualizer:
 
             ax.annotate(
                 f"{direction_text} {abs(end_price-start_price):.2f}",
+                (mid_idx, mid_price),
+                xytext=(5, 5),
+                textcoords="offset points",
+                fontsize=8,
+                color=color,
+                fontweight="bold",
+            )
+
+    def _plot_segments_detailed(self, ax, df, segments, index_map=None):
+        """详细绘制线段"""
+        if not segments:
+            return
+
+        for i, segment in enumerate(segments):
+            # 获取线段的起始和结束索引及价格
+            start_idx = segment.start_index
+            end_idx = segment.end_index
+            start_price = segment.start_price
+            end_price = segment.end_price
+            direction = segment.direction
+
+            # 应用索引映射
+            if index_map:
+                start_idx = index_map.get(start_idx, start_idx)
+                end_idx = index_map.get(end_idx, end_idx)
+
+            # 确保索引在有效范围内
+            start_idx = max(0, min(start_idx, len(df) - 1))
+            end_idx = max(0, min(end_idx, len(df) - 1))
+
+            # 根据方向选择颜色
+            color = (
+                self.colors["up_segment"]
+                if direction == 1
+                else self.colors["down_segment"]
+            )
+
+            # 绘制线段，线宽为3px
+            ax.plot(
+                [start_idx, end_idx],
+                [start_price, end_price],
+                color=color,
+                linewidth=3,
+                alpha=0.8,
+            )
+
+            # 添加线段的标签
+            mid_idx = (start_idx + end_idx) / 2
+            mid_price = (start_price + end_price) / 2
+            direction_text = "↑" if direction == 1 else "↓"
+
+            ax.annotate(
+                f"{direction_text} 线段",
                 (mid_idx, mid_price),
                 xytext=(5, 5),
                 textcoords="offset points",
@@ -871,23 +931,39 @@ class AdvancedChanlunVisualizer:
 
 
 def generate_divergence_chart(
-    stock_code, period="2y", interval="1d", save_dir="./chanlun_reports"
+    stock_code, period="2y", interval="1d", save_dir="./chanlun_reports", kline_count=None
 ):
-    """生成缠论背驰分析图表（仅PNG）"""
+    """生成缠论背驰分析图表（仅PNG）
+    
+    Args:
+        stock_code: 股票代码
+        period: 时间段 ('1y', '2y', '6mo', etc.)
+        interval: 时间间隔 ('1d', '1wk', etc.)
+        save_dir: 保存目录
+        kline_count: 指定使用的K线数量，None表示使用全部
+    """
 
     print(f"正在生成 {stock_code} 的背驰分析图表...")
+    if kline_count:
+        print(f"指定使用 {kline_count} 根K线")
 
     # 创建保存目录
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     try:
-        # 获取数据 - 使用约360根K线
+        # 获取数据
         data = get_stock_data(stock_code, period=period, interval=interval)
-
-        if len(data) < 360:
-            print(f"当前{len(data)}根K线，建议至少有360根K线进行完整分析")
-            return
+        
+        # 如果指定了K线数量，进行限制
+        if kline_count:
+            if len(data) > kline_count:
+                data = data.tail(kline_count).reset_index(drop=True)
+            print(f"实际使用 {len(data)} 根K线")
+        else:
+            if len(data) < 360:
+                print(f"当前{len(data)}根K线，建议至少有360根K线进行完整分析")
+                # 不返回，继续处理
 
         # 缠论分析
         processor = ChanlunProcessor()
@@ -902,6 +978,10 @@ def generate_divergence_chart(
             result["merged_df"] = processor.merged_df
         else:
             result["merged_df"] = data
+            
+        # 确保线段数据被添加到结果中
+        if "segments" not in result:
+            result["segments"] = processor.segments if hasattr(processor, "segments") else []
 
         # 创建可视化器
         visualizer = AdvancedChanlunVisualizer()
@@ -925,13 +1005,16 @@ def generate_divergence_chart(
         strokes_count = (
             len(result.get("strokes", [])) if result and isinstance(result, dict) else 0
         )
+        segments_count = (
+            len(result.get("segments", [])) if result and isinstance(result, dict) else 0
+        )
         centrals_count = (
             len(result.get("centrals", []))
             if result and isinstance(result, dict)
             else 0
         )
 
-        print(f"分形: {fractals_count} | 笔: {strokes_count} | 中枢: {centrals_count}")
+        print(f"分形: {fractals_count} | 笔: {strokes_count} | 线段: {segments_count} | 中枢: {centrals_count}")
 
         return chart_path
 

@@ -171,3 +171,5 @@ config/stock_strategy_map.yml
 
 # Tests
 /tests/test_strategy_private.py
+
+/chanlun_report/*

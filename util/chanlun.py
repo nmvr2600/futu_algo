@@ -194,6 +194,85 @@ class ChanlunProcessor:
         self.centrals = centrals
         return centrals
 
+    def build_segments(self) -> List[Stroke]:
+        """构建线段（将多个笔合并成趋势线段）"""
+        if len(self.strokes) < 3:
+            self.segments = []
+            return []
+
+        segments = []
+        
+        # 线段构建逻辑：
+        # 1. 从第一个笔开始，确定初始方向
+        # 2. 持续跟踪笔的走势，直到出现反向突破
+        # 3. 反向突破确认后，形成一个线段
+        
+        i = 0
+        while i < len(self.strokes):
+            # 至少需要3笔才能开始构建线段
+            if i + 2 >= len(self.strokes):
+                break
+                
+            # 以当前笔作为线段的起点
+            start_stroke = self.strokes[i]
+            direction = start_stroke.direction
+            
+            # 寻找线段的终点（需要满足线段定义）
+            # 线段至少包含3笔，且需要有明确的破坏点
+            segment_end_idx = i
+            
+            # 向前查找，确定线段的范围
+            for j in range(i + 1, len(self.strokes)):
+                # 检查是否满足线段破坏条件
+                # 对于向上线段，破坏条件是出现向下笔突破最后一个向上笔的低点
+                # 对于向下线段，破坏条件是出现向上笔突破最后一个向下笔的高点
+                if direction == 1:  # 向上线段
+                    if self.strokes[j].direction == -1:  # 出现向下笔
+                        # 检查是否突破了线段最后一个向上笔的低点
+                        last_up_stroke = None
+                        for k in range(i, j):
+                            if self.strokes[k].direction == 1:
+                                last_up_stroke = self.strokes[k]
+                        
+                        if last_up_stroke and self.strokes[j].end_price < last_up_stroke.start_price:
+                            # 线段被破坏，确认线段结束
+                            segment_end_idx = j - 1
+                            break
+                else:  # 向下线段
+                    if self.strokes[j].direction == 1:  # 出现向上笔
+                        # 检查是否突破了线段最后一个向下笔的高点
+                        last_down_stroke = None
+                        for k in range(i, j):
+                            if self.strokes[k].direction == -1:
+                                last_down_stroke = self.strokes[k]
+                        
+                        if last_down_stroke and self.strokes[j].end_price > last_down_stroke.start_price:
+                            # 线段被破坏，确认线段结束
+                            segment_end_idx = j - 1
+                            break
+            
+            # 如果找到了足够的笔来构成线段（至少3笔）
+            if segment_end_idx >= i + 2:
+                # 创建线段
+                end_stroke = self.strokes[segment_end_idx]
+                segment = Stroke(
+                    start_index=start_stroke.start_index,
+                    end_index=end_stroke.end_index,
+                    start_price=start_stroke.start_price,
+                    end_price=end_stroke.end_price,
+                    direction=direction,
+                )
+                segments.append(segment)
+                
+                # 从下一个可能的线段起点开始继续处理
+                i = segment_end_idx + 1
+            else:
+                # 没有找到合适的线段，继续下一个笔
+                i += 1
+
+        self.segments = segments
+        return segments
+
     def identify_first_buy_point(self, df: pd.DataFrame) -> Optional[int]:
         """识别第一类买点"""
         if len(self.centrals) < 2:
@@ -246,6 +325,7 @@ class ChanlunProcessor:
             self._merge_k_lines(df)
             self.identify_fractals()
             self.build_strokes()
+            self.build_segments()
             self.build_centrals()
 
             return {
