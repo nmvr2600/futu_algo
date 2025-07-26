@@ -268,7 +268,7 @@ class AdvancedChanlunVisualizer:
 
         # 绘制分形
         self._plot_fractals_detailed(
-            ax, df, result["fractals"], index_map, fractal_number_map
+            ax, df, result["fractals"], index_map, fractal_number_map, merged_index_map
         )
 
         # 绘制笔
