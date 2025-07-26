@@ -40,7 +40,10 @@ class Central:
     end_index: int
     high: float
     low: float
+    start_timestamp: Optional[Any] = None
+    end_timestamp: Optional[Any] = None
     level: int = 1  # 中枢级别
+    strokes: Optional[List[Stroke]] = None
 
 
 class ChanlunProcessor:
@@ -198,39 +201,129 @@ class ChanlunProcessor:
 
     def build_centrals(self) -> List[Central]:
         """构建中枢"""
-        if len(self.strokes) < 3:
-            return []
-
         centrals = []
 
-        for i in range(len(self.strokes) - 2):
+        # 至少需要3笔才能形成中枢
+        if len(self.strokes) < 3:
+            return centrals
+
+        # 遍历笔，寻找连续3笔的重叠区间
+        i = 0
+        while i < len(self.strokes) - 2:
             stroke1 = self.strokes[i]
             stroke2 = self.strokes[i + 1]
             stroke3 = self.strokes[i + 2]
 
-            # 正确计算中枢的重叠区间
-            # 对于上涨笔，使用start_price作为低点，end_price作为高点
-            # 对于下跌笔，使用start_price作为高点，end_price作为低点
-            stroke1_high = max(stroke1.start_price, stroke1.end_price)
-            stroke1_low = min(stroke1.start_price, stroke1.end_price)
-            stroke2_high = max(stroke2.start_price, stroke2.end_price)
-            stroke2_low = min(stroke2.start_price, stroke2.end_price)
-            stroke3_high = max(stroke3.start_price, stroke3.end_price)
-            stroke3_low = min(stroke3.start_price, stroke3.end_price)
+            # 检查是否满足中枢形成条件
+            # 1. 第1笔和第3笔方向相同
+            # 2. 第2笔方向与前两笔相反
+            # 3. 存在重叠区间
 
-            # 计算三个笔的重叠区间
-            min_high = min(stroke1_high, stroke2_high, stroke3_high)
-            max_low = max(stroke1_low, stroke2_low, stroke3_low)
+            if (
+                stroke1.direction == stroke3.direction
+                and stroke1.direction != stroke2.direction
+            ):
+                # 计算重叠区间
+                # 中枢的重叠区间是第一笔和第三笔的重叠部分
+                if stroke1.direction == 1:  # 上涨->下跌->上涨
+                    # 第一笔区间: [stroke1.start_price, stroke1.end_price]
+                    # 第三笔区间: [stroke3.start_price, stroke3.end_price]
+                    overlap_high = min(stroke1.end_price, stroke3.end_price)
+                    overlap_low = max(stroke1.start_price, stroke3.start_price)
+                else:  # 下跌->上涨->下跌
+                    # 第一笔区间: [stroke1.end_price, stroke1.start_price]
+                    # 第三笔区间: [stroke3.start_price, stroke3.end_price]
+                    overlap_high = min(stroke1.start_price, stroke3.start_price)
+                    overlap_low = max(stroke1.end_price, stroke3.end_price)
 
-            # 如果高点的最小值大于低点的最大值，则存在重叠区间，形成中枢
-            if min_high > max_low:
-                central = Central(
-                    start_index=stroke1.start_index,
-                    end_index=stroke3.end_index,
-                    high=min_high,
-                    low=max_low,
-                )
-                centrals.append(central)
+                # 检查第2笔是否在重叠区间内
+                if stroke2.direction == 1:  # 向上笔
+                    second_range_high = stroke2.end_price
+                    second_range_low = stroke2.start_price
+                else:  # 向下笔
+                    second_range_high = stroke2.start_price
+                    second_range_low = stroke2.end_price
+
+                # 判断第2笔是否与重叠区间有交集
+                if max(overlap_low, second_range_low) <= min(
+                    overlap_high, second_range_high
+                ):
+                    # 形成中枢
+                    central = Central(
+                        start_index=stroke1.start_index,
+                        end_index=stroke3.end_index,
+                        high=overlap_high,
+                        low=overlap_low,
+                        strokes=[stroke1, stroke2, stroke3],
+                    )
+                    centrals.append(central)
+                    i += 3  # 跳过已使用的笔
+                    continue
+
+            i += 1
+
+        # 合并所有有重叠的中枢
+        if len(centrals) > 1:
+            # 使用并查集的思想来合并中枢
+            # 初始化每个中枢为一个独立的集合
+            parent = list(range(len(centrals)))
+            
+            def find(x):
+                if parent[x] != x:
+                    parent[x] = find(parent[x])  # 路径压缩
+                return parent[x]
+            
+            def union(x, y):
+                root_x = find(x)
+                root_y = find(y)
+                if root_x != root_y:
+                    parent[root_y] = root_x
+            
+            # 检查所有中枢对，如果有重叠则合并它们
+            for i in range(len(centrals)):
+                for j in range(i+1, len(centrals)):
+                    # 检查两个中枢是否有重叠
+                    if max(centrals[i].low, centrals[j].low) <= min(centrals[i].high, centrals[j].high):
+                        union(i, j)
+            
+            # 根据并查集的结果，将属于同一集合的中枢合并
+            merged_groups = {}
+            for i in range(len(centrals)):
+                root = find(i)
+                if root not in merged_groups:
+                    merged_groups[root] = []
+                merged_groups[root].append(centrals[i])
+            
+            # 创建合并后的中枢
+            merged_centrals = []
+            for group in merged_groups.values():
+                if len(group) == 1:
+                    # 单独的中枢，不需要合并
+                    merged_centrals.append(group[0])
+                else:
+                    # 需要合并的中枢组
+                    # 合并后的中枢范围是所有中枢的并集
+                    high = max(central.high for central in group)
+                    low = min(central.low for central in group)
+                    start_index = min(central.start_index for central in group)
+                    end_index = max(central.end_index for central in group)
+                    
+                    # 合并所有笔
+                    all_strokes = []
+                    for central in group:
+                        if central.strokes:
+                            all_strokes.extend(central.strokes)
+                    
+                    merged_central = Central(
+                        start_index=start_index,
+                        end_index=end_index,
+                        high=high,
+                        low=low,
+                        strokes=all_strokes,
+                    )
+                    merged_centrals.append(merged_central)
+            
+            centrals = merged_centrals
 
         self.centrals = centrals
         return centrals
