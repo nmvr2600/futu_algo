@@ -351,73 +351,63 @@ class ChanlunProcessor:
         return centrals
 
     def build_segments(self) -> List[Stroke]:
-        """构建线段（严格按照缠论标准）"""
-        if len(self.strokes) < 3:
+        """构建线段（确保连续性，消除断裂）"""
+        segments = []
+        segment_count = 0
+        
+        # 核心策略：确保每个笔都被线段覆盖，无间隙
+        if not self.strokes:
             self.segments = []
             return []
-
-        segments = []
-
-        # 线段构建逻辑：
-        # 1. 从第一个笔开始，确定初始方向
-        # 2. 持续跟踪笔的走势，直到出现反向突破
-        # 3. 反向突破确认后，形成一个线段
-
-        i = 0
-        segment_count = 0  # 线段编号计数器
-        while i < len(self.strokes):
-            # 至少需要3笔才能开始构建线段
-            if i + 2 >= len(self.strokes):
-                break
-
-            # 以当前笔作为线段的起点
-            start_stroke = self.strokes[i]
-            direction = start_stroke.direction
-
-            # 寻找线段的终点（需要满足线段定义）
-            # 线段至少包含3笔，且需要有明确的破坏点
-            segment_end_idx = i
-
-            # 向前查找，确定线段的范围
-            for j in range(i + 1, len(self.strokes)):
-                # 检查是否满足线段破坏条件
-                # 对于向上线段，破坏条件是出现向下笔突破最后一个向上笔的低点
-                # 对于向下线段，破坏条件是出现向上笔突破最后一个向下笔的高点
-                if direction == 1:  # 向上线段
-                    if self.strokes[j].direction == -1:  # 出现向下笔
-                        # 检查是否突破了线段最后一个向上笔的低点
-                        last_up_stroke = None
-                        for k in range(i, j):
-                            if self.strokes[k].direction == 1:
-                                last_up_stroke = self.strokes[k]
-
-                        if (
-                            last_up_stroke
-                            and self.strokes[j].end_price < last_up_stroke.start_price
-                        ):
-                            # 线段被破坏，确认线段结束
-                            segment_end_idx = j - 1
-                            break
-                else:  # 向下线段
-                    if self.strokes[j].direction == 1:  # 出现向上笔
-                        # 检查是否突破了线段最后一个向下笔的高点
-                        last_down_stroke = None
-                        for k in range(i, j):
-                            if self.strokes[k].direction == -1:
-                                last_down_stroke = self.strokes[k]
-
-                        if (
-                            last_down_stroke
-                            and self.strokes[j].end_price > last_down_stroke.start_price
-                        ):
-                            # 线段被破坏，确认线段结束
-                            segment_end_idx = j - 1
-                            break
-
-            # 如果找到了足够的笔来构成线段（至少3笔）
-            if segment_end_idx >= i + 2:
+        
+        # 如果只有1-2笔，直接创建覆盖所有笔的线段
+        if len(self.strokes) <= 3:
+            if len(self.strokes) >= 1:
+                segment_count += 1
+                segment = Stroke(
+                    start_index=self.strokes[0].start_index,
+                    end_index=self.strokes[-1].end_index,
+                    start_price=self.strokes[0].start_price,
+                    end_price=self.strokes[-1].end_price,
+                    direction=self.strokes[0].direction,
+                    start_time_key=self.strokes[0].start_time_key,
+                    end_time_key=self.strokes[-1].end_time_key,
+                    idx=segment_count,
+                    fractal_start=self.strokes[0].fractal_start,
+                    fractal_end=self.strokes[-1].fractal_end,
+                )
+                segments.append(segment)
+                self.segments = segments
+                return segments
+        
+        # 对于多条笔，采用连续覆盖策略
+        current_start = 0
+        
+        while current_start < len(self.strokes):
+            # 确定当前线段的方向
+            direction = self.strokes[current_start].direction
+            
+            # 寻找合适的终点
+            segment_end = current_start
+            
+            # 策略1：寻找下一个方向反转点
+            for j in range(current_start + 1, len(self.strokes)):
+                if self.strokes[j].direction != direction:
+                    # 找到方向反转，当前线段终点为前一个笔
+                    segment_end = j - 1
+                    break
+            else:
+                # 没有找到方向反转，覆盖到末尾
+                segment_end = len(self.strokes) - 1
+            
+            # 确保线段至少包含当前笔
+            segment_end = max(segment_end, current_start)
+            
+            if segment_end >= current_start:
                 # 创建线段
-                end_stroke = self.strokes[segment_end_idx]
+                start_stroke = self.strokes[current_start]
+                end_stroke = self.strokes[segment_end]
+                
                 segment_count += 1
                 segment = Stroke(
                     start_index=start_stroke.start_index,
@@ -425,19 +415,39 @@ class ChanlunProcessor:
                     start_price=start_stroke.start_price,
                     end_price=end_stroke.end_price,
                     direction=direction,
-                    start_time_key=start_stroke.start_time_key,  # 添加起始笔time_key
-                    end_time_key=end_stroke.end_time_key,  # 添加结束笔time_key
-                    idx=segment_count,  # 线段序号
-                    fractal_start=start_stroke.fractal_start,  # 起始分形序号
-                    fractal_end=end_stroke.fractal_end,  # 结束分形序号
+                    start_time_key=start_stroke.start_time_key,
+                    end_time_key=end_stroke.end_time_key,
+                    idx=segment_count,
+                    fractal_start=start_stroke.fractal_start,
+                    fractal_end=end_stroke.fractal_end,
                 )
                 segments.append(segment)
-
-                # 从下一个可能的线段起点开始继续处理
-                i = segment_end_idx + 1
-            else:
-                # 没有找到合适的线段，继续下一个笔
-                i += 1
+                
+                # 下一个线段从当前线段终点开始，确保连续性
+                current_start = segment_end
+                if current_start >= len(self.strokes) - 1:
+                    break
+        
+        # 确保最后一个笔被覆盖
+        if segments and segments[-1].end_index < self.strokes[-1].end_index:
+            # 创建最后一个线段覆盖剩余部分
+            start_stroke = self.strokes[segments[-1].end_index + 1] if segments[-1].end_index + 1 < len(self.strokes) else segments[-1]
+            end_stroke = self.strokes[-1]
+            
+            segment_count += 1
+            segment = Stroke(
+                start_index=start_stroke.start_index,
+                end_index=end_stroke.end_index,
+                start_price=start_stroke.start_price,
+                end_price=end_stroke.end_price,
+                direction=start_stroke.direction,
+                start_time_key=start_stroke.start_time_key,
+                end_time_key=end_stroke.end_time_key,
+                idx=segment_count,
+                fractal_start=start_stroke.fractal_start,
+                fractal_end=end_stroke.fractal_end,
+            )
+            segments.append(segment)
 
         self.segments = segments
         return segments
