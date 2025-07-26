@@ -1,5 +1,11 @@
 import unittest
 import pandas as pd
+import sys
+import os
+
+# 添加路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from util.chanlun import ChanlunProcessor, FractalType, Fractal, Stroke, Central
 
 

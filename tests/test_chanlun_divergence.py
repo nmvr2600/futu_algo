@@ -99,8 +99,12 @@ class TestChanlunDivergence:
         # 计算MACD
         macd_result = self.visualizer._calculate_macd(df)
 
+        # 创建索引映射
+        index_map = self.visualizer._create_index_map(df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
+
         # 识别背驰
-        divergences = self.visualizer._identify_divergences(df, result, macd_result)
+        divergences = self.visualizer._identify_divergences(df, result, macd_result, index_map, merged_index_map)
 
         # 验证趋势背驰
         trend_divergences = [d for d in divergences if "趋势" in d["type"]]
@@ -123,8 +127,12 @@ class TestChanlunDivergence:
         # 计算MACD
         macd_result = self.visualizer._calculate_macd(df)
 
+        # 创建索引映射
+        index_map = self.visualizer._create_index_map(df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
+
         # 识别背驰
-        divergences = self.visualizer._identify_divergences(df, result, macd_result)
+        divergences = self.visualizer._identify_divergences(df, result, macd_result, index_map, merged_index_map)
 
         # 验证盘整背驰
         range_divergences = [d for d in divergences if "盘整" in d["type"]]
@@ -147,8 +155,12 @@ class TestChanlunDivergence:
         # 计算MACD
         macd_result = self.visualizer._calculate_macd(df)
 
+        # 创建索引映射
+        index_map = self.visualizer._create_index_map(df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
+
         # 识别背驰
-        divergences = self.visualizer._identify_divergences(df, result, macd_result)
+        divergences = self.visualizer._identify_divergences(df, result, macd_result, index_map, merged_index_map)
 
         # 验证笔间背驰
         stroke_divergences = [d for d in divergences if "笔间" in d["type"]]
@@ -169,12 +181,13 @@ class TestChanlunDivergence:
         histogram = pd.Series([1, 2, 3, 2, 1, 0, -1, -2, -1, 0])
 
         # 计算面积
-        area = self.visualizer._calculate_macd_area(histogram, 0, 9)
+        area_dict = self.visualizer._calculate_macd_area(histogram, 0, 9)
+        total_area = area_dict["red"] + area_dict["green"]
         expected_area = sum(abs(histogram))
 
-        print(f"计算面积: {area}, 期望面积: {expected_area}")
+        print(f"计算面积: {area_dict}, 总面积: {total_area}, 期望面积: {expected_area}")
 
-        return abs(area - expected_area) < 0.001
+        return abs(total_area - expected_area) < 0.001
 
     def test_edge_cases(self):
         """测试边界情况"""
@@ -184,8 +197,10 @@ class TestChanlunDivergence:
         empty_df = pd.DataFrame(columns=["time_key", "open", "high", "low", "close"])
         result = self.processor.process(empty_df)
         macd_result = self.visualizer._calculate_macd(empty_df)
+        index_map = self.visualizer._create_index_map(empty_df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
         divergences = self.visualizer._identify_divergences(
-            empty_df, result, macd_result
+            empty_df, result, macd_result, index_map, merged_index_map
         )
         print(f"空数据测试: {len(divergences)}个背驰")
 
@@ -201,8 +216,10 @@ class TestChanlunDivergence:
         )
         result = self.processor.process(single_df)
         macd_result = self.visualizer._calculate_macd(single_df)
+        index_map = self.visualizer._create_index_map(single_df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
         divergences = self.visualizer._identify_divergences(
-            single_df, result, macd_result
+            single_df, result, macd_result, index_map, merged_index_map
         )
         print(f"单根K线测试: {len(divergences)}个背驰")
 
@@ -218,8 +235,10 @@ class TestChanlunDivergence:
         )
         result = self.processor.process(small_df)
         macd_result = self.visualizer._calculate_macd(small_df)
+        index_map = self.visualizer._create_index_map(small_df)
+        merged_index_map = self.visualizer._create_merged_index_map(result)
         divergences = self.visualizer._identify_divergences(
-            small_df, result, macd_result
+            small_df, result, macd_result, index_map, merged_index_map
         )
         print(f"少量K线测试: {len(divergences)}个背驰")
 

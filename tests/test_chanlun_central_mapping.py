@@ -13,7 +13,7 @@ from typing import List, Tuple, Dict
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from util.chanlun_legacy import ChanlunProcessor, Central, Fractal, FractalType
+from util.chanlun import ChanlunProcessor, Central, Fractal, FractalType
 
 
 class TestChanlunCentralMapping:
@@ -146,9 +146,10 @@ class TestChanlunCentralMapping:
         df = self.create_central_test_data()
 
         # 执行完整的缠论处理
-        fractals = self.processor.identify_fractals(df)
-        strokes = self.processor.build_strokes(df)
-        centrals = self.processor.identify_centrals()
+        self.processor._merge_k_lines(df)
+        fractals = self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
+        centrals = self.processor.build_centrals()
 
         print(f"分型: {len(fractals)}, 笔: {len(strokes)}, 中枢: {len(centrals)}")
 
@@ -176,7 +177,10 @@ class TestChanlunCentralMapping:
         print("=== 测试中枢重叠条件 ===")
 
         df = self.create_central_test_data()
-        centrals = self.processor.identify_centrals()
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        self.processor.build_strokes()
+        centrals = self.processor.build_centrals()
 
         # 验证中枢重叠
         for central in centrals:
@@ -204,9 +208,10 @@ class TestChanlunCentralMapping:
         df = self.create_central_test_data()
 
         # 获取合并后的数据
-        merged_df = self.processor._merge_k_lines(df)
+        self.processor._merge_k_lines(df)
+        merged_df = self.processor.merged_df
 
-        if merged_df is None:
+        if merged_df is None or merged_df.empty:
             print("❌ 合并数据为空")
             return False
 
@@ -234,7 +239,10 @@ class TestChanlunCentralMapping:
         print("=== 测试中枢与笔关联 ===")
 
         df = self.create_central_test_data()
-        centrals = self.processor.identify_centrals()
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        self.processor.build_strokes()
+        centrals = self.processor.build_centrals()
 
         for central in centrals:
             # 验证中枢包含的笔数量
@@ -247,7 +255,7 @@ class TestChanlunCentralMapping:
                 prev_stroke = central.strokes[i - 1]
                 curr_stroke = central.strokes[i]
 
-                if prev_stroke.end_index >= curr_stroke.start_index:
+                if prev_stroke.end_index > curr_stroke.start_index:
                     print("❌ 中枢内笔时间顺序错误")
                     return False
 
@@ -259,7 +267,8 @@ class TestChanlunCentralMapping:
         print("=== 测试分型索引映射 ===")
 
         df = self.create_central_test_data()
-        fractals = self.processor.identify_fractals(df)
+        self.processor._merge_k_lines(df)
+        fractals = self.processor.identify_fractals()
 
         # 获取合并后的数据
         merged_df = self.processor.merged_df
@@ -297,9 +306,10 @@ class TestChanlunCentralMapping:
         df = self.create_central_test_data()
 
         # 获取合并后的数据
-        merged_df = self.processor._merge_k_lines(df)
+        self.processor._merge_k_lines(df)
+        merged_df = self.processor.merged_df
 
-        if merged_df is None:
+        if merged_df is None or merged_df.empty:
             print("❌ 合并数据为空")
             return False
 
@@ -337,7 +347,10 @@ class TestChanlunCentralMapping:
         }
         df = pd.DataFrame(boundary_data)
 
-        centrals = self.processor.identify_centrals()
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        self.processor.build_strokes()
+        centrals = self.processor.build_centrals()
 
         # 边界情况验证
         if len(centrals) > 0:
@@ -373,7 +386,10 @@ class TestChanlunCentralMapping:
 
         df = pd.DataFrame(complex_data)
 
-        centrals = self.processor.identify_centrals()
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        self.processor.build_strokes()
+        centrals = self.processor.build_centrals()
 
         print(f"复杂数据中识别出的中枢: {len(centrals)}")
 

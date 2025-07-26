@@ -14,12 +14,11 @@ import traceback
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from util.chanlun_legacy import (
+from util.chanlun import (
     ChanlunProcessor,
     Fractal,
     FractalType,
     Stroke,
-    Segment,
     Central,
 )
 
@@ -226,29 +225,14 @@ class TestChanlunComprehensive:
             df = self.create_comprehensive_test_data("complex")
             print(f"测试数据长度: {len(df)}")
 
-            # 1. 合并K线
-            merged_df = self.processor._merge_k_lines(df)
-            if merged_df is None or len(merged_df) == 0:
-                print("❌ 合并K线失败")
-                return False
-            print(f"合并后数据长度: {len(merged_df)}")
-
-            # 2. 识别分型
-            fractals = self.processor.identify_fractals(df)
-            print(f"识别分型: {len(fractals)}")
-
-            # 3. 构建笔
-            strokes = self.processor.build_strokes(df)
-            print(f"构建笔: {len(strokes)}")
-
-            # 4. 构建线段
-            segments = self.processor.build_segments()
-            print(f"构建线段: {len(segments)}")
-
-            # 5. 识别中枢
-            centrals = self.processor.identify_centrals()
-            print(f"识别中枢: {len(centrals)}")
-
+            # 执行完整处理流程
+            result = self.processor.process(df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
+            
+            print(f"合并后数据长度: {len(self.processor.merged_df) if self.processor.merged_df is not None else 0}")
             # 验证数据完整性
             if len(fractals) == 0:
                 print("⚠️  未识别到分型")
@@ -275,10 +259,11 @@ class TestChanlunComprehensive:
             df = self.create_comprehensive_test_data("trend")
 
             # 执行完整处理
-            fractals = self.processor.identify_fractals(df)
-            strokes = self.processor.build_strokes(df)
-            segments = self.processor.build_segments()
-            centrals = self.processor.identify_centrals()
+            result = self.processor.process(df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
 
             # 验证索引范围
             data_length = (
@@ -331,10 +316,11 @@ class TestChanlunComprehensive:
         try:
             df = self.create_comprehensive_test_data("consolidation")
 
-            fractals = self.processor.identify_fractals(df)
-            strokes = self.processor.build_strokes(df)
-            segments = self.processor.build_segments()
-            centrals = self.processor.identify_centrals()
+            result = self.processor.process(df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
 
             # 验证分型与笔的关系
             if len(strokes) > 0:
@@ -399,10 +385,11 @@ class TestChanlunComprehensive:
                 }
             )
 
-            fractals = self.processor.identify_fractals(small_df)
-            strokes = self.processor.build_strokes(small_df)
-            segments = self.processor.build_segments()
-            centrals = self.processor.identify_centrals()
+            result = self.processor.process(small_df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
 
             print(
                 f"小数据集结果 - 分型: {len(fractals)}, 笔: {len(strokes)}, 线段: {len(segments)}, 中枢: {len(centrals)}"
@@ -413,14 +400,14 @@ class TestChanlunComprehensive:
                 {"time_key": [], "open": [], "high": [], "low": [], "close": []}
             )
 
-            if not empty_df.empty:
-                empty_fractals = self.processor.identify_fractals(empty_df)
-                print(f"空数据集 - 分型: {len(empty_fractals)}")
+            # 直接调用处理器处理空数据
+            empty_result = self.processor.process(empty_df)
+            print(f"空数据集 - 分型: {len(empty_result['fractals'])}")
 
             # 测试单条数据
             single_df = pd.DataFrame(
                 {
-                    "time_key": ["2024-01-01"],
+                    "time_key": pd.to_datetime(["2024-01-01"]),
                     "open": [10.0],
                     "high": [11.0],
                     "low": [9.0],
@@ -428,14 +415,16 @@ class TestChanlunComprehensive:
                 }
             )
 
-            single_fractals = self.processor.identify_fractals(single_df)
-            print(f"单条数据 - 分型: {len(single_fractals)}")
+            single_result = self.processor.process(single_df)
+            print(f"单条数据 - 分型: {len(single_result['fractals'])}")
 
             print("✅ 边界情况测试通过")
             return True
 
         except Exception as e:
             print(f"❌ 边界情况测试异常: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def test_performance_metrics(self) -> bool:
@@ -453,10 +442,11 @@ class TestChanlunComprehensive:
 
             start_time = time.time()
 
-            fractals = self.processor.identify_fractals(large_df)
-            strokes = self.processor.build_strokes(large_df)
-            segments = self.processor.build_segments()
-            centrals = self.processor.identify_centrals()
+            result = self.processor.process(large_df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
 
             end_time = time.time()
             processing_time = end_time - start_time
@@ -485,10 +475,11 @@ class TestChanlunComprehensive:
             df = self.create_comprehensive_test_data("complex")
 
             # 执行完整处理
-            fractals = self.processor.identify_fractals(df)
-            strokes = self.processor.build_strokes(df)
-            segments = self.processor.build_segments()
-            centrals = self.processor.identify_centrals()
+            result = self.processor.process(df)
+            fractals = result['fractals']
+            strokes = result['strokes']
+            segments = result['segments']
+            centrals = result['centrals']
 
             # 验证可视化所需数据
             if self.processor.merged_df is None:

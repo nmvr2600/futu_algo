@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-PATH = Path.cwd()
+PATH = Path(__file__).parent.parent
 PATH_CONFIG = PATH / 'config'
 PATH_DATA = PATH / 'data'
 PATH_DATABASE = PATH / 'database'  # Obsoleted

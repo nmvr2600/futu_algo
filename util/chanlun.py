@@ -15,7 +15,13 @@ class Fractal:
     index: int
     type: FractalType
     price: float
+    time_key: pd.Timestamp = None  # 关键K线的时间戳，作为唯一标识
+    related_time_keys: List[pd.Timestamp] = None  # 关联K线的时间戳列表（可选）
     idx: int = 0  # 分型编号，不管是顶分型还是底分型，依次编号为1,2,3,4...
+    
+    def __post_init__(self):
+        if self.related_time_keys is None:
+            self.related_time_keys = []
 
 
 @dataclass
@@ -27,6 +33,8 @@ class Stroke:
     start_price: float
     end_price: float
     direction: int  # 1 for up, -1 for down
+    start_time_key: pd.Timestamp = None  # 起始分型的时间戳标识
+    end_time_key: pd.Timestamp = None  # 结束分型的时间戳标识
     idx: int = 0  # 笔序号 1,2,3...
     fractal_start: int = 0  # 起始分形序号
     fractal_end: int = 0  # 结束分形序号
@@ -40,8 +48,8 @@ class Central:
     end_index: int
     high: float
     low: float
-    start_timestamp: Optional[Any] = None
-    end_timestamp: Optional[Any] = None
+    start_time_key: pd.Timestamp = None  # 起始笔的时间戳标识
+    end_time_key: pd.Timestamp = None  # 结束笔的时间戳标识
     level: int = 1  # 中枢级别
     strokes: Optional[List[Stroke]] = None
 
@@ -126,6 +134,7 @@ class ChanlunProcessor:
                         index=i,
                         type=FractalType.TOP,
                         price=self.merged_df["high"].iloc[i],
+                        time_key=self.merged_df["time_key"].iloc[i],  # 添加time_key标识
                         idx=fractal_count,  # 添加分型编号
                     )
                 )
@@ -143,6 +152,7 @@ class ChanlunProcessor:
                         index=i,
                         type=FractalType.BOTTOM,
                         price=self.merged_df["low"].iloc[i],
+                        time_key=self.merged_df["time_key"].iloc[i],  # 添加time_key标识
                         idx=fractal_count,  # 添加分型编号
                     )
                 )
@@ -164,6 +174,12 @@ class ChanlunProcessor:
         for i in range(1, len(all_fractals)):
             prev_fractal = all_fractals[i - 1]
             curr_fractal = all_fractals[i]
+
+            # 检查分型索引是否在合并数据范围内
+            if (prev_fractal.index >= len(self.merged_df) or 
+                curr_fractal.index >= len(self.merged_df) or
+                prev_fractal.index < 0 or curr_fractal.index < 0):
+                continue
 
             if prev_fractal.type != curr_fractal.type:
                 direction = 1 if curr_fractal.type == FractalType.TOP else -1
@@ -190,6 +206,8 @@ class ChanlunProcessor:
                     start_price=start_price,
                     end_price=end_price,
                     direction=direction,
+                    start_time_key=prev_fractal.time_key,  # 添加起始分型time_key
+                    end_time_key=curr_fractal.time_key,  # 添加结束分型time_key
                     idx=len(strokes) + 1,  # 笔序号 1,2,3...
                     fractal_start=prev_fractal.idx,  # 起始分形序号
                     fractal_end=curr_fractal.idx,  # 结束分形序号
@@ -254,6 +272,8 @@ class ChanlunProcessor:
                         end_index=stroke3.end_index,
                         high=overlap_high,
                         low=overlap_low,
+                        start_time_key=stroke1.start_time_key,  # 添加起始笔time_key
+                        end_time_key=stroke3.end_time_key,  # 添加结束笔time_key
                         strokes=[stroke1, stroke2, stroke3],
                     )
                     centrals.append(central)
@@ -319,6 +339,8 @@ class ChanlunProcessor:
                         end_index=end_index,
                         high=high,
                         low=low,
+                        start_time_key=group[0].start_time_key,  # 添加起始笔time_key
+                        end_time_key=group[-1].end_time_key,  # 添加结束笔time_key
                         strokes=all_strokes,
                     )
                     merged_centrals.append(merged_central)
@@ -403,6 +425,8 @@ class ChanlunProcessor:
                     start_price=start_stroke.start_price,
                     end_price=end_stroke.end_price,
                     direction=direction,
+                    start_time_key=start_stroke.start_time_key,  # 添加起始笔time_key
+                    end_time_key=end_stroke.end_time_key,  # 添加结束笔time_key
                     idx=segment_count,  # 线段序号
                     fractal_start=start_stroke.fractal_start,  # 起始分形序号
                     fractal_end=end_stroke.fractal_end,  # 结束分形序号

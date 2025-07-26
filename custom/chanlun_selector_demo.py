@@ -50,8 +50,8 @@ def get_stock_data(symbol, period="1y", interval="1d"):
                 'Close': 'close',
                 'Volume': 'volume'
             })
-            # 确保有time_key列
-            data['time_key'] = data.index.strftime('%Y-%m-%d %H:%M:%S')
+            # 确保有time_key列，直接使用索引（已经是datetime类型）
+            data['time_key'] = data.index
         return data
     except Exception as e:
         print(f"获取{symbol}数据时出错: {e}")

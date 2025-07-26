@@ -50,7 +50,10 @@ class AdvancedChanlunVisualizer:
 
     def _create_index_map(self, df):
         """创建统一的索引映射，将DataFrame索引映射到绘图位置"""
-        return {idx: i for i, idx in enumerate(df.index)}
+        # 确保df有连续的整数索引
+        if len(df) == 0:
+            return {}
+        return {i: i for i in range(len(df))}
 
     def _create_merged_index_map(self, result):
         """创建合并数据到原始数据的索引映射"""
@@ -63,6 +66,8 @@ class AdvancedChanlunVisualizer:
             if original_indices:
                 merged_index_map[merged_idx] = original_indices[0]
 
+        # 添加索引映射验证
+        print(f"索引映射验证 - 合并前索引数: {sum(len(indices) for indices in index_mapping.values())}, 合并后索引数: {len(merged_index_map)}")
         return merged_index_map
 
     def _create_fractal_number_map(self, result):
@@ -105,29 +110,95 @@ class AdvancedChanlunVisualizer:
         # MACD副图
         ax2 = fig.add_subplot(gs[1], sharex=ax1)
 
-        # 转换时间格式
-        df = df.sort_values("time_key").reset_index(drop=True)
-        dates = pd.to_datetime(df["time_key"])
+        # 保存原始数据用于绘图
+        original_df = df.copy()
+        original_length = len(df)
+        
+        # 转换时间格式（使用原始数据进行绘图）
+        df_for_plotting = df.sort_values("time_key").reset_index(drop=True)
+        # 确保time_key列是datetime类型
+        if not pd.api.types.is_datetime64_any_dtype(df_for_plotting["time_key"]):
+            dates = pd.to_datetime(df_for_plotting["time_key"])
+        else:
+            dates = df_for_plotting["time_key"]
+        
+        # 转换日期为数字格式用于绘图
+        x_dates = [mdates.date2num(date) for date in dates]
+        
+        # 验证数据对齐
+        print(f"数据对齐验证 - dates长度: {len(dates)}, x_dates长度: {len(x_dates)}, df长度: {len(df_for_plotting)}")
+        
+        # 确保x_dates和df长度一致
+        if len(x_dates) != len(df_for_plotting):
+            print(f"调整数据对齐 - 截取前x_dates: {len(x_dates)}, df: {len(df_for_plotting)}")
+            min_length = min(len(x_dates), len(df_for_plotting))
+            x_dates = x_dates[:min_length]
+            df_for_plotting = df_for_plotting.iloc[:min_length].reset_index(drop=True)
+            dates = dates[:min_length]
+            print(f"调整后长度: {len(x_dates)}")
 
         # 创建索引映射
         index_map = self._create_index_map(df)
         merged_index_map = self._create_merged_index_map(result)
 
-        # 计算MACD
-        macd_result = self._calculate_macd(df)
+        # 计算MACD（使用原始数据）
+        macd_result = self._calculate_macd(df_for_plotting)
 
         # 识别背驰
         divergences = self._identify_divergences(
-            df, result, macd_result, index_map, merged_index_map
+            df_for_plotting, result, macd_result, index_map, merged_index_map
         )
 
         # 绘制主图表
         self._plot_enhanced_kline(
-            ax1, df, dates, result, divergences, index_map, merged_index_map
+            fig, ax1, df_for_plotting, dates, x_dates, result, divergences, index_map, merged_index_map
         )
         self._plot_macd(
-            ax2, df, dates, macd_result, divergences, index_map, merged_index_map
+            ax2, df_for_plotting, dates, x_dates, macd_result, divergences, index_map, merged_index_map
         )
+        
+        # 根据数据间隔和密度智能调整x轴设置
+        if len(dates) > 0:
+            # 计算数据间隔
+            if len(dates) > 1:
+                avg_interval = (dates.iloc[-1] - dates.iloc[0]).total_seconds() / (len(dates) - 1)
+            else:
+                avg_interval = 86400  # 默认为1天
+            
+            # 根据间隔类型设置合适的格式
+            if avg_interval < 3600:  # 小于1小时（分钟级数据）
+                date_format = '%H:%M'
+                # 使用更稀疏的刻度
+                ax1.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(dates)//24)))
+                # 调整K线宽度
+                bar_width = 0.3 * (avg_interval / 3600)  # 根据实际间隔调整
+            elif avg_interval < 86400:  # 小于1天（小时级数据）
+                date_format = '%m-%d\n%H:%M'
+                ax1.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(dates)//12)))
+                bar_width = 0.4 * (avg_interval / 86400)
+            elif avg_interval < 7 * 86400:  # 小于1周（日级数据）
+                date_format = '%m-%d'
+                ax1.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(dates)//7)))
+                bar_width = 0.6
+            else:  # 周级或月级数据
+                date_format = '%Y-%m-%d'
+                ax1.xaxis.set_major_locator(mdates.AutoDateLocator())
+                bar_width = 0.6
+        else:
+            date_format = '%Y-%m-%d'
+            bar_width = 0.6
+
+        # 设置x轴格式
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter(date_format))
+        ax1.set_xlim(x_dates[0], x_dates[-1])
+        
+        # 设置MACD子图的x轴
+        ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter(date_format))
+        ax2.set_xlim(x_dates[0], x_dates[-1])
+
+        # 自动旋转日期标签
+        fig.autofmt_xdate()
 
         # 设置标题
         fig.suptitle(
@@ -334,64 +405,93 @@ class AdvancedChanlunVisualizer:
 
         return divergences
 
-    def _plot_enhanced_kline(
-        self, ax, df, dates, result, divergences, index_map, merged_index_map
-    ):
+    def _plot_enhanced_kline(self, fig, ax, df, dates, x_dates, result, divergences, index_map, merged_index_map):
         """绘制增强版K线图，包含背驰标记"""
-        # 绘制K线
-        for i, (date, row) in enumerate(zip(dates, df.itertuples())):
-            open_price = row.open
-            high_price = row.high
-            low_price = row.low
-            close_price = row.close
-
-            color = (
-                self.colors["bullish"]
-                if close_price >= open_price
-                else self.colors["bearish"]
-            )
+        if df.empty:
+            return
+            
+        # 确保我们不会超出df的范围
+        max_index = min(len(x_dates), len(df))
+        if max_index == 0:
+            return
+            
+        # 数据对齐检查
+        if len(x_dates) != len(df):
+            print(f"警告: x_dates和df长度不一致 - x_dates: {len(x_dates)}, df: {len(df)}")
+            
+        # 根据数据密度动态设置K线宽度
+        if len(df) > 100:
+            bar_width = 0.3  # 高密度数据使用较小宽度
+        elif len(df) > 50:
+            bar_width = 0.5  # 中等密度使用中等宽度
+        else:
+            bar_width = 0.6  # 低密度数据使用较大宽度
+            
+        # 统一绘制逻辑，不管dates和df是否长度一致
+        for i in range(max_index):
+            x_date = x_dates[i]
+            row = df.iloc[i]
+            open_price = row['open']
+            high_price = row['high']
+            low_price = row['low']
+            close_price = row['close']
+            
+            # 绘制影线
+            ax.plot([x_date, x_date], [low_price, high_price], color='black', linewidth=1)
 
             # 绘制实体
             height = abs(close_price - open_price)
             bottom = min(open_price, close_price)
-            rect = Rectangle(
-                (i - 0.3, bottom),
-                0.6,
-                height,
-                facecolor=color,
-                alpha=0.8,
-                edgecolor=color,
-            )
+            
+            # 根据涨跌情况设置不同的显示方式
+            if close_price >= open_price:
+                # 阳线（上涨）- 红色填充实体
+                rect = Rectangle(
+                    (x_date - bar_width/2, bottom),
+                    bar_width,
+                    height,
+                    facecolor='red',
+                    alpha=0.8,
+                    edgecolor='black',
+                )
+            else:
+                # 阴线（下跌）- 绿色填充实体
+                rect = Rectangle(
+                    (x_date - bar_width/2, bottom),
+                    bar_width,
+                    height,
+                    facecolor='green',
+                    alpha=0.8,
+                    edgecolor='black',
+                )
+            
             ax.add_patch(rect)
-
-            # 绘制影线
-            ax.plot([i, i], [low_price, high_price], color=color, linewidth=1)
 
         # 创建分形编号映射
         fractal_number_map = self._create_fractal_number_map(result)
 
         # 绘制分形
         self._plot_fractals_detailed(
-            ax, df, result["fractals"], index_map, fractal_number_map, merged_index_map
+            ax, df, dates, result["fractals"], index_map, fractal_number_map, merged_index_map
         )
 
         # 绘制笔
         self._plot_strokes_detailed(
-            ax, df, result["strokes"], index_map, fractal_number_map, merged_index_map
+            ax, df, dates, result["strokes"], index_map, fractal_number_map, merged_index_map
         )
 
         # 绘制线段
         self._plot_segments_detailed(
-            ax, df, result["segments"], index_map, fractal_number_map, merged_index_map
+            ax, df, dates, result["segments"], index_map, fractal_number_map, merged_index_map
         )
 
         # 绘制中枢
         self._plot_centrals_detailed(
-            ax, df, result["centrals"], index_map, merged_index_map
+            ax, df, dates, result["centrals"], index_map, merged_index_map
         )
 
         # 标记背驰信号
-        self._plot_divergences(ax, df, divergences, index_map, merged_index_map)
+        self._plot_divergences(ax, df, dates, divergences, index_map, merged_index_map)
 
         # 设置网格和标签
         ax.grid(True, alpha=0.3, linestyle="--")
@@ -405,6 +505,7 @@ class AdvancedChanlunVisualizer:
         self,
         ax,
         df,
+        dates,
         fractals,
         index_map=None,
         fractal_number_map=None,
@@ -435,9 +536,11 @@ class AdvancedChanlunVisualizer:
             if index_map:
                 top_indices = [index_map.get(idx, idx) for idx in top_indices]
 
+            # 确保索引在有效范围内
+            valid_top_indices = [idx for idx in top_indices if 0 <= idx < len(dates)]
             ax.scatter(
-                top_indices,
-                top_prices,
+                [dates[idx] for idx in valid_top_indices],
+                [top_prices[i] for i, idx in enumerate(top_indices) if 0 <= idx < len(dates)],
                 color=self.colors["top_fractal"],
                 marker="v",
                 s=120,
@@ -448,37 +551,39 @@ class AdvancedChanlunVisualizer:
 
             # 添加价格标签和编号
             for idx, price, number in zip(top_indices, top_prices, top_numbers):
-                # 价格标签
-                ax.annotate(
-                    f"{price:.2f}",
-                    (idx, price),
-                    xytext=(0, 10),
-                    textcoords="offset points",
-                    fontsize=9,
-                    color=self.colors["top_fractal"],
-                    ha="center",
-                    va="bottom",
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8),
-                )
+                # 确保索引在有效范围内
+                if 0 <= idx < len(dates):
+                    # 价格标签
+                    ax.annotate(
+                        f"{price:.2f}",
+                        (dates.iloc[idx], price),
+                        xytext=(0, 10),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color=self.colors["top_fractal"],
+                        ha="center",
+                        va="bottom",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8),
+                    )
 
-                # 编号标签
-                ax.annotate(
-                    f"{number}",
-                    (idx, price),
-                    xytext=(0, 25),
-                    textcoords="offset points",
-                    fontsize=10,
-                    color="white",
-                    ha="center",
-                    va="bottom",
-                    fontweight="bold",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor=self.colors["top_fractal"],
-                        alpha=0.9,
-                        edgecolor="black",
-                    ),
-                )
+                    # 编号标签
+                    ax.annotate(
+                        f"{number}",
+                        (dates.iloc[idx], price),
+                        xytext=(0, 25),
+                        textcoords="offset points",
+                        fontsize=10,
+                        color="white",
+                        ha="center",
+                        va="bottom",
+                        fontweight="bold",
+                        bbox=dict(
+                            boxstyle="round,pad=0.3",
+                            facecolor=self.colors["top_fractal"],
+                            alpha=0.9,
+                            edgecolor="black",
+                        ),
+                    )
 
         # 底分型
         if bottom_fractals:
@@ -500,9 +605,11 @@ class AdvancedChanlunVisualizer:
             if index_map:
                 bottom_indices = [index_map.get(idx, idx) for idx in bottom_indices]
 
+            # 确保索引在有效范围内
+            valid_bottom_indices = [idx for idx in bottom_indices if 0 <= idx < len(dates)]
             ax.scatter(
-                bottom_indices,
-                bottom_prices,
+                [dates[idx] for idx in valid_bottom_indices],
+                [bottom_prices[i] for i, idx in enumerate(bottom_indices) if 0 <= idx < len(dates)],
                 color=self.colors["bottom_fractal"],
                 marker="^",
                 s=120,
@@ -515,42 +622,45 @@ class AdvancedChanlunVisualizer:
             for idx, price, number in zip(
                 bottom_indices, bottom_prices, bottom_numbers
             ):
-                # 价格标签
-                ax.annotate(
-                    f"{price:.2f}",
-                    (idx, price),
-                    xytext=(0, -15),
-                    textcoords="offset points",
-                    fontsize=9,
-                    color=self.colors["bottom_fractal"],
-                    ha="center",
-                    va="top",
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8),
-                )
+                # 确保索引在有效范围内
+                if 0 <= idx < len(dates):
+                    # 价格标签
+                    ax.annotate(
+                        f"{price:.2f}",
+                        (dates.iloc[idx], price),
+                        xytext=(0, -15),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color=self.colors["bottom_fractal"],
+                        ha="center",
+                        va="top",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8),
+                    )
 
-                # 编号标签
-                ax.annotate(
-                    f"{number}",
-                    (idx, price),
-                    xytext=(0, -30),
-                    textcoords="offset points",
-                    fontsize=10,
-                    color="white",
-                    ha="center",
-                    va="top",
-                    fontweight="bold",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor=self.colors["bottom_fractal"],
-                        alpha=0.9,
-                        edgecolor="black",
-                    ),
-                )
+                    # 编号标签
+                    ax.annotate(
+                        f"{number}",
+                        (dates.iloc[idx], price),
+                        xytext=(0, -30),
+                        textcoords="offset points",
+                        fontsize=10,
+                        color="white",
+                        ha="center",
+                        va="top",
+                        fontweight="bold",
+                        bbox=dict(
+                            boxstyle="round,pad=0.3",
+                            facecolor=self.colors["bottom_fractal"],
+                            alpha=0.9,
+                            edgecolor="black",
+                        ),
+                    )
 
     def _plot_strokes_detailed(
         self,
         ax,
         df,
+        dates,
         strokes,
         index_map=None,
         fractal_number_map=None,
@@ -589,7 +699,7 @@ class AdvancedChanlunVisualizer:
 
             # 即使在相同索引也绘制一个点，确保视觉连续性
             ax.plot(
-                [start_idx, end_idx],
+                [dates[start_idx], dates[end_idx]],
                 [start_price, end_price],
                 color=color,
                 linewidth=linewidth,
@@ -601,7 +711,7 @@ class AdvancedChanlunVisualizer:
 
             # 在折线连接处添加小圆点突出起点和终点
             ax.scatter(
-                [start_idx, end_idx],
+                [dates[start_idx], dates[end_idx]],
                 [start_price, end_price],
                 color=color,
                 s=15,
@@ -623,47 +733,50 @@ class AdvancedChanlunVisualizer:
             )
 
             # 起始点标签 - 放在K线上方或下方，避免重叠
-            if stroke.direction == 1:  # 上升笔
-                ax.annotate(
-                    f"[{start_number},{end_number}]",
-                    (start_idx, start_price),
-                    xytext=(0, 15),
-                    textcoords="offset points",
-                    fontsize=9,
-                    color=color,
-                    fontweight="bold",
-                    ha="center",
-                    va="bottom",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor="white",
-                        alpha=0.8,
-                        edgecolor=color,
-                    ),
-                )
-            else:  # 下降笔
-                ax.annotate(
-                    f"[{start_number},{end_number}]",
-                    (start_idx, start_price),
-                    xytext=(0, -20),
-                    textcoords="offset points",
-                    fontsize=9,
-                    color=color,
-                    fontweight="bold",
-                    ha="center",
-                    va="top",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor="white",
-                        alpha=0.8,
-                        edgecolor=color,
-                    ),
-                )
+            # 确保索引在有效范围内
+            if 0 <= start_idx < len(dates):
+                if stroke.direction == 1:  # 上升笔
+                    ax.annotate(
+                        f"[{start_number},{end_number}]",
+                        (dates.iloc[start_idx], start_price),
+                        xytext=(0, 15),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color=color,
+                        fontweight="bold",
+                        ha="center",
+                        va="bottom",
+                        bbox=dict(
+                            boxstyle="round,pad=0.3",
+                            facecolor="white",
+                            alpha=0.8,
+                            edgecolor=color,
+                        ),
+                    )
+                else:  # 下降笔
+                    ax.annotate(
+                        f"[{start_number},{end_number}]",
+                        (dates.iloc[start_idx], start_price),
+                        xytext=(0, -20),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color=color,
+                        fontweight="bold",
+                        ha="center",
+                        va="top",
+                        bbox=dict(
+                            boxstyle="round,pad=0.3",
+                            facecolor="white",
+                            alpha=0.8,
+                            edgecolor=color,
+                        ),
+                    )
 
     def _plot_segments_detailed(
         self,
         ax,
         df,
+        dates,
         segments,
         index_map=None,
         fractal_number_map=None,
@@ -704,7 +817,7 @@ class AdvancedChanlunVisualizer:
 
             # 绘制线段，线宽为3px，确保连续连接
             ax.plot(
-                [start_idx, end_idx],
+                [dates[start_idx], dates[end_idx]],
                 [start_price, end_price],
                 color=color,
                 linewidth=4,
@@ -716,7 +829,7 @@ class AdvancedChanlunVisualizer:
 
             # 在折线连接处添加圆点，提高视觉清晰度
             ax.scatter(
-                [start_idx, end_idx],
+                [dates[start_idx], dates[end_idx]],
                 [start_price, end_price],
                 color=color,
                 s=15,
@@ -725,7 +838,7 @@ class AdvancedChanlunVisualizer:
             )
 
             # 添加线段的标签 - 使用 [起始分形编号,结束分形编号] 格式标注
-            mid_idx = (start_idx + end_idx) / 2
+            mid_date = dates.iloc[(start_idx + end_idx) // 2]
             mid_price = (start_price + end_price) / 2
 
             # 获取起始和结束分形的编号
@@ -743,7 +856,7 @@ class AdvancedChanlunVisualizer:
             # 使用 [起始分形编号,结束分形编号] 格式标注
             ax.annotate(
                 f"[{start_number},{end_number}]",
-                (mid_idx, mid_price),
+                (mid_date, mid_price),
                 xytext=(5, 5),
                 textcoords="offset points",
                 fontsize=10,
@@ -758,7 +871,7 @@ class AdvancedChanlunVisualizer:
             )
 
     def _plot_centrals_detailed(
-        self, ax, df, centrals, index_map=None, merged_index_map=None
+        self, ax, df, dates, centrals, index_map=None, merged_index_map=None
     ):
         """详细绘制中枢"""
         if not centrals:
@@ -784,31 +897,43 @@ class AdvancedChanlunVisualizer:
 
             color = self.colors["central"]
 
-            # 绘制中枢矩形
-            width = end_idx - start_idx
-            height = high_price - low_price
-            rect = Rectangle(
-                (start_idx, low_price),
-                width,
-                height,
-                facecolor=self.colors["central_fill"],
-                alpha=0.4,
-                edgecolor=color,
-                linewidth=2,
-                linestyle="--",
-            )
-            ax.add_patch(rect)
+            # 确保索引在有效范围内
+            if 0 <= start_idx < len(dates) and 0 <= end_idx < len(dates):
+                # 绘制中枢矩形
+                start_date = mdates.date2num(dates[start_idx])
+                end_date = mdates.date2num(dates[end_idx])
+                width = end_date - start_date
+                height = high_price - low_price
+                rect = Rectangle(
+                    (start_date, low_price),
+                    width,
+                    height,
+                    facecolor=self.colors["central_fill"],
+                    alpha=0.4,
+                    edgecolor=color,
+                    linewidth=2,
+                    linestyle="--",
+                )
+                ax.add_patch(rect)
+            # 如果索引无效，则跳过这个中枢
 
             # 添加中枢详细信息
-            mid_idx = start_idx + width / 2
-            mid_price = (high_price + low_price) / 2
+            if 0 <= start_idx < len(dates) and 0 <= end_idx < len(dates):
+                mid_idx = start_idx + (end_idx - start_idx) // 2
+                if 0 <= mid_idx < len(dates):
+                    mid_date = dates.iloc[mid_idx]
+                    mid_price = (high_price + low_price) / 2
+                else:
+                    continue
+            else:
+                continue
 
             info_text = (
                 f"中枢{i+1}\n{low_price:.2f}-{high_price:.2f}\n区间:{height:.2f}"
             )
 
             ax.text(
-                mid_idx,
+                mid_date,
                 mid_price,
                 info_text,
                 ha="center",
@@ -847,7 +972,7 @@ class AdvancedChanlunVisualizer:
         }
 
     def _plot_macd(
-        self, ax, df, dates, macd_result, divergences, index_map, merged_index_map=None
+        self, ax, df, dates, x_dates, macd_result, divergences, index_map, merged_index_map=None
     ):
         """绘制MACD指标图"""
         # 获取MACD数据
@@ -856,14 +981,14 @@ class AdvancedChanlunVisualizer:
         histogram = macd_result["histogram"]
 
         # 绘制MACD线
-        ax.plot(range(len(dates)), macd_line, label="MACD", color="blue", linewidth=1.5)
+        ax.plot(x_dates, macd_line, label="MACD", color="blue", linewidth=1.5)
         ax.plot(
-            range(len(dates)), signal_line, label="Signal", color="red", linewidth=1.5
+            x_dates, signal_line, label="Signal", color="red", linewidth=1.5
         )
 
         # 绘制柱状图
         colors = ["red" if h >= 0 else "green" for h in histogram]
-        ax.bar(range(len(dates)), histogram, color=colors, alpha=0.6, width=0.8)
+        ax.bar(x_dates, histogram, color=colors, alpha=0.6, width=0.8)
 
         for div in divergences:
             # 转换索引以匹配绘图位置
@@ -877,7 +1002,11 @@ class AdvancedChanlunVisualizer:
             if index_map:
                 idx = index_map.get(idx, idx)
 
-            ax.axvline(x=idx, color="orange", linestyle="--", alpha=0.7, linewidth=1)
+            # 确保索引在有效范围内
+            if idx < 0 or idx >= len(x_dates):
+                continue
+
+            ax.axvline(x=x_dates[idx], color="orange", linestyle="--", alpha=0.7, linewidth=1)
             # 转换索引以匹配绘图位置
             macd_idx = div["price_index"]
 
@@ -889,14 +1018,15 @@ class AdvancedChanlunVisualizer:
             if index_map:
                 macd_idx = index_map.get(macd_idx, macd_idx)
 
-            macd_value = (
-                macd_line.iloc[macd_idx]
-                if macd_idx < len(macd_line)
-                else macd_line.iloc[-1]
-            )
+            # 确保MACD索引在有效范围内
+            if macd_idx < 0 or macd_idx >= len(macd_line):
+                macd_value = macd_line.iloc[-1] if len(macd_line) > 0 else 0
+            else:
+                macd_value = macd_line.iloc[macd_idx]
+                
             ax.annotate(
                 div["type"],
-                (idx, macd_value),
+                (x_dates[idx], macd_value),
                 xytext=(5, 5),
                 textcoords="offset points",
                 fontsize=10,
@@ -909,7 +1039,7 @@ class AdvancedChanlunVisualizer:
         ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1))
         ax.axhline(y=0, color="black", linestyle="-", linewidth=0.5)
 
-    def _plot_divergences(self, ax, df, divergences, index_map, merged_index_map=None):
+    def _plot_divergences(self, ax, df, dates, divergences, index_map, merged_index_map=None):
         """标记背驰信号"""
         for div in divergences:
             # 转换索引以匹配绘图位置
@@ -923,6 +1053,10 @@ class AdvancedChanlunVisualizer:
             if index_map:
                 idx = index_map.get(idx, idx)
 
+            # 确保索引在有效范围内
+            if idx < 0 or idx >= len(dates):
+                continue
+
             price = div["price"]
             div_type = div["type"]
 
@@ -930,10 +1064,10 @@ class AdvancedChanlunVisualizer:
             marker = "v" if "顶背驰" in div_type else "^"  # 使用v和^代替↓和↑
             color = "red" if "顶背驰" in div_type else "green"
 
-            ax.scatter(idx, price, color=color, marker=marker, s=200, zorder=6)
+            ax.scatter(dates.iloc[idx], price, color=color, marker=marker, s=200, zorder=6)
             ax.annotate(
                 f"{div_type}\n{price:.2f}",
-                (idx, price),
+                (dates.iloc[idx], price),
                 xytext=(10, 20 if "顶背驰" in div_type else -30),
                 textcoords="offset points",
                 fontsize=9,
@@ -1008,6 +1142,8 @@ def generate_divergence_chart(
 
     except Exception as e:
         print(f"生成背驰图表失败: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

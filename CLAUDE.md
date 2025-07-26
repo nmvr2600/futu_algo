@@ -78,6 +78,34 @@ pytest -v
 pytest tests/test_data_engine.py
 ```
 
+All code changes must be accompanied by appropriate unit tests following the Test-Driven Development (TDD) approach:
+1. Write failing tests first before implementing new functionality
+2. Implement the minimal code required to make tests pass
+3. Refactor code while ensuring all tests continue to pass
+4. Maintain test coverage for all new and existing features
+
+## Test-Driven Development (TDD) Process
+
+### Core Principles
+1. **Write tests first**: Before implementing any new feature or fixing a bug, write a test that captures the desired behavior
+2. **Run tests**: Execute the tests to confirm they fail (red phase)
+3. **Write minimal code**: Implement the simplest solution to make the tests pass (green phase)
+4. **Refactor**: Improve code quality while ensuring all tests continue to pass (refactor phase)
+5. **Repeat**: Continue this cycle for each new feature or bug fix
+
+### Test Structure Guidelines
+1. **Test naming**: Use descriptive names that clearly indicate what is being tested
+2. **Test isolation**: Each test should be independent and not rely on the state of other tests
+3. **Test data**: Use realistic test data that covers normal, edge, and error cases
+4. **Assertions**: Make specific assertions about expected outcomes
+5. **Setup/Teardown**: Use proper test setup and cleanup mechanisms
+
+### Visualization Testing Requirements
+1. **Position accuracy**: All visual elements (fractals, strokes, segments, centrals) must be accurately positioned on the chart
+2. **Index mapping**: Ensure correct mapping between data indices and visual coordinates
+3. **Element visibility**: Verify that all elements are properly rendered and visible
+4. **Regression testing**: Include tests for specific parameter combinations that have caused issues in the past
+
 ## Code Architecture
 
 1. **Engines** (`engines/`): Core functionality modules
@@ -114,6 +142,7 @@ pytest tests/test_data_engine.py
 - Backtesting simulates trades using historical data with commission fees
 - Real-time trading subscribes to market data and executes strategies
 - Configuration is managed through config.ini (copy from config_template.ini)
+- All development must follow Test-Driven Development (TDD) process: write tests first, then implement code, and ensure all tests pass before committing
 
 ## Supported Time Intervals
 K_1M, K_3M, K_5M, K_15M, K_30M, K_60M, K_DAY, K_WEEK, K_MON, K_QUARTER, K_YEAR

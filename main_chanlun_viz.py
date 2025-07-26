@@ -8,7 +8,7 @@ import argparse
 import sys
 import os
 from datetime import datetime
-from chanlun_advanced_visualizer import generate_divergence_chart
+from chanlun_plotly_visualizer import generate_plotly_chart
 
 
 def print_banner():
@@ -114,7 +114,7 @@ def main():
         if args.verbose:
             print(f"[{start_time.strftime('%Y-%m-%d %H:%M:%S')}] 开始生成 {args.stock_code} 的缠论图表...")
         
-        chart_path = generate_divergence_chart(
+        chart_path = generate_plotly_chart(
             stock_code=args.stock_code,
             period=args.period,
             interval=args.interval,

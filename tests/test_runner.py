@@ -24,6 +24,7 @@ class TestRunner:
             "test_chanlun_strokes_segments.py",
             "test_chanlun_central_mapping.py",
             "test_chanlun_comprehensive.py",
+            "test_timestamp_fix.py",
         ]
         self.test_dir = os.path.dirname(os.path.abspath(__file__))
 

@@ -16,7 +16,12 @@
 #  Copyright (c)  billpwchan - All Rights Reserved
 
 
+import sys
+import os
 import unittest
+
+# 添加项目根目录到sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engines import DataProcessingInterface
 from strategies.KDJ_Cross import KDJCross

@@ -13,7 +13,7 @@ from typing import List, Tuple
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from util.chanlun_legacy import ChanlunProcessor, Fractal, FractalType, Stroke, Segment
+from util.chanlun import ChanlunProcessor, Fractal, FractalType, Stroke
 
 
 class TestChanlunStrokesSegments:
@@ -78,8 +78,9 @@ class TestChanlunStrokesSegments:
         print("=== 测试基础笔构建 ===")
 
         df = self.create_test_data("simple")
-        fractals = self.processor.identify_fractals(df)
-        strokes = self.processor.build_strokes(df)
+        self.processor._merge_k_lines(df)
+        fractals = self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
 
         print(f"识别到的分型数量: {len(fractals)}")
         print(f"构建的笔数量: {len(strokes)}")
@@ -111,7 +112,9 @@ class TestChanlunStrokesSegments:
         print("=== 测试笔方向交替 ===")
 
         df = self.create_test_data("complex")
-        strokes = self.processor.build_strokes(df)
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
 
         if len(strokes) >= 3:
             # 验证相邻笔方向必须相反
@@ -129,7 +132,9 @@ class TestChanlunStrokesSegments:
         print("=== 测试笔有效性规则 ===")
 
         df = self.create_test_data("trend")
-        strokes = self.processor.build_strokes(df)
+        self.processor._merge_k_lines(df)
+        self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
 
         for stroke in strokes:
             # 验证索引范围
@@ -162,8 +167,10 @@ class TestChanlunStrokesSegments:
         df = self.create_test_data("complex")
 
         # 确保所有前置步骤完成
-        fractals = self.processor.identify_fractals(df)
-        strokes = self.processor.build_strokes(df)
+        df = self.create_test_data("complex")
+        self.processor._merge_k_lines(df)
+        fractals = self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
         segments = self.processor.build_segments()
 
         print(f"分型: {len(fractals)}, 笔: {len(strokes)}, 线段: {len(segments)}")
@@ -302,8 +309,9 @@ class TestChanlunStrokesSegments:
             }
         )
 
-        self.processor.identify_fractals(break_data)
-        self.processor.build_strokes(break_data)
+        self.processor._merge_k_lines(break_data)
+        self.processor.identify_fractals()
+        self.processor.build_strokes()
         segments = self.processor.build_segments()
 
         print(f"破坏测试 - 线段数量: {len(segments)}")
@@ -326,8 +334,9 @@ class TestChanlunStrokesSegments:
         print("=== 测试笔和线段索引一致性 ===")
 
         df = self.create_test_data("complex")
-        fractals = self.processor.identify_fractals(df)
-        strokes = self.processor.build_strokes(df)
+        self.processor._merge_k_lines(df)
+        fractals = self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
         segments = self.processor.build_segments()
 
         # 验证线段索引范围在笔索引范围内
@@ -366,8 +375,9 @@ class TestChanlunStrokesSegments:
             }
         )
 
-        fractals = self.processor.identify_fractals(small_df)
-        strokes = self.processor.build_strokes(small_df)
+        self.processor._merge_k_lines(small_df)
+        fractals = self.processor.identify_fractals()
+        strokes = self.processor.build_strokes()
         segments = self.processor.build_segments()
 
         if len(fractals) > 0:
