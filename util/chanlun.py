@@ -15,6 +15,7 @@ class Fractal:
     index: int
     type: FractalType
     price: float
+    idx: int = 0  # 分型编号，不管是顶分型还是底分型，依次编号为1,2,3,4...
 
 
 @dataclass
@@ -26,6 +27,9 @@ class Stroke:
     start_price: float
     end_price: float
     direction: int  # 1 for up, -1 for down
+    idx: int = 0  # 笔序号 1,2,3...
+    fractal_start: int = 0  # 起始分形序号
+    fractal_end: int = 0  # 结束分形序号
 
 
 @dataclass
@@ -104,6 +108,7 @@ class ChanlunProcessor:
             return []
 
         fractals = []
+        fractal_count = 0  # 分型编号计数器
         for i in range(1, len(self.merged_df) - 1):
             is_top = (
                 self.merged_df["high"].iloc[i] > self.merged_df["high"].iloc[i - 1]
@@ -112,11 +117,13 @@ class ChanlunProcessor:
                 and self.merged_df["low"].iloc[i] > self.merged_df["low"].iloc[i + 1]
             )
             if is_top:
+                fractal_count += 1
                 fractals.append(
                     Fractal(
                         index=i,
                         type=FractalType.TOP,
                         price=self.merged_df["high"].iloc[i],
+                        idx=fractal_count,  # 添加分型编号
                     )
                 )
 
@@ -127,11 +134,13 @@ class ChanlunProcessor:
                 and self.merged_df["high"].iloc[i] < self.merged_df["high"].iloc[i + 1]
             )
             if is_bottom:
+                fractal_count += 1
                 fractals.append(
                     Fractal(
                         index=i,
                         type=FractalType.BOTTOM,
                         price=self.merged_df["low"].iloc[i],
+                        idx=fractal_count,  # 添加分型编号
                     )
                 )
 
@@ -139,7 +148,7 @@ class ChanlunProcessor:
         return fractals
 
     def build_strokes(self) -> List[Stroke]:
-        """构建笔"""
+        """构建笔（带索引追踪）"""
         if not self.fractals:
             return []
 
@@ -155,12 +164,32 @@ class ChanlunProcessor:
 
             if prev_fractal.type != curr_fractal.type:
                 direction = 1 if curr_fractal.type == FractalType.TOP else -1
+
+                # 获取原始K线数据中的实际价格
+                original_start_indices = self.merged_df.iloc[prev_fractal.index][
+                    "original_indices"
+                ]
+                original_end_indices = self.merged_df.iloc[curr_fractal.index][
+                    "original_indices"
+                ]
+
+                # 使用原始K线数据中的实际价格
+                if direction == 1:  # 上涨笔
+                    start_price = self.merged_df["low"].iloc[prev_fractal.index]
+                    end_price = self.merged_df["high"].iloc[curr_fractal.index]
+                else:  # 下跌笔
+                    start_price = self.merged_df["high"].iloc[prev_fractal.index]
+                    end_price = self.merged_df["low"].iloc[curr_fractal.index]
+
                 stroke = Stroke(
                     start_index=prev_fractal.index,
                     end_index=curr_fractal.index,
-                    start_price=prev_fractal.price,
-                    end_price=curr_fractal.price,
+                    start_price=start_price,
+                    end_price=end_price,
                     direction=direction,
+                    idx=len(strokes) + 1,  # 笔序号 1,2,3...
+                    fractal_start=prev_fractal.idx,  # 起始分形序号
+                    fractal_end=curr_fractal.idx,  # 结束分形序号
                 )
                 strokes.append(stroke)
 
@@ -179,9 +208,21 @@ class ChanlunProcessor:
             stroke2 = self.strokes[i + 1]
             stroke3 = self.strokes[i + 2]
 
-            min_high = min(stroke1.end_price, stroke2.end_price, stroke3.end_price)
-            max_low = max(stroke1.end_price, stroke2.end_price, stroke3.end_price)
+            # 正确计算中枢的重叠区间
+            # 对于上涨笔，使用start_price作为低点，end_price作为高点
+            # 对于下跌笔，使用start_price作为高点，end_price作为低点
+            stroke1_high = max(stroke1.start_price, stroke1.end_price)
+            stroke1_low = min(stroke1.start_price, stroke1.end_price)
+            stroke2_high = max(stroke2.start_price, stroke2.end_price)
+            stroke2_low = min(stroke2.start_price, stroke2.end_price)
+            stroke3_high = max(stroke3.start_price, stroke3.end_price)
+            stroke3_low = min(stroke3.start_price, stroke3.end_price)
 
+            # 计算三个笔的重叠区间
+            min_high = min(stroke1_high, stroke2_high, stroke3_high)
+            max_low = max(stroke1_low, stroke2_low, stroke3_low)
+
+            # 如果高点的最小值大于低点的最大值，则存在重叠区间，形成中枢
             if min_high > max_low:
                 central = Central(
                     start_index=stroke1.start_index,
@@ -195,32 +236,33 @@ class ChanlunProcessor:
         return centrals
 
     def build_segments(self) -> List[Stroke]:
-        """构建线段（将多个笔合并成趋势线段）"""
+        """构建线段（严格按照缠论标准）"""
         if len(self.strokes) < 3:
             self.segments = []
             return []
 
         segments = []
-        
+
         # 线段构建逻辑：
         # 1. 从第一个笔开始，确定初始方向
         # 2. 持续跟踪笔的走势，直到出现反向突破
         # 3. 反向突破确认后，形成一个线段
-        
+
         i = 0
+        segment_count = 0  # 线段编号计数器
         while i < len(self.strokes):
             # 至少需要3笔才能开始构建线段
             if i + 2 >= len(self.strokes):
                 break
-                
+
             # 以当前笔作为线段的起点
             start_stroke = self.strokes[i]
             direction = start_stroke.direction
-            
+
             # 寻找线段的终点（需要满足线段定义）
             # 线段至少包含3笔，且需要有明确的破坏点
             segment_end_idx = i
-            
+
             # 向前查找，确定线段的范围
             for j in range(i + 1, len(self.strokes)):
                 # 检查是否满足线段破坏条件
@@ -233,8 +275,11 @@ class ChanlunProcessor:
                         for k in range(i, j):
                             if self.strokes[k].direction == 1:
                                 last_up_stroke = self.strokes[k]
-                        
-                        if last_up_stroke and self.strokes[j].end_price < last_up_stroke.start_price:
+
+                        if (
+                            last_up_stroke
+                            and self.strokes[j].end_price < last_up_stroke.start_price
+                        ):
                             # 线段被破坏，确认线段结束
                             segment_end_idx = j - 1
                             break
@@ -245,25 +290,32 @@ class ChanlunProcessor:
                         for k in range(i, j):
                             if self.strokes[k].direction == -1:
                                 last_down_stroke = self.strokes[k]
-                        
-                        if last_down_stroke and self.strokes[j].end_price > last_down_stroke.start_price:
+
+                        if (
+                            last_down_stroke
+                            and self.strokes[j].end_price > last_down_stroke.start_price
+                        ):
                             # 线段被破坏，确认线段结束
                             segment_end_idx = j - 1
                             break
-            
+
             # 如果找到了足够的笔来构成线段（至少3笔）
             if segment_end_idx >= i + 2:
                 # 创建线段
                 end_stroke = self.strokes[segment_end_idx]
+                segment_count += 1
                 segment = Stroke(
                     start_index=start_stroke.start_index,
                     end_index=end_stroke.end_index,
                     start_price=start_stroke.start_price,
                     end_price=end_stroke.end_price,
                     direction=direction,
+                    idx=segment_count,  # 线段序号
+                    fractal_start=start_stroke.fractal_start,  # 起始分形序号
+                    fractal_end=end_stroke.fractal_end,  # 结束分形序号
                 )
                 segments.append(segment)
-                
+
                 # 从下一个可能的线段起点开始继续处理
                 i = segment_end_idx + 1
             else:
@@ -322,11 +374,45 @@ class ChanlunProcessor:
     def process(self, df: pd.DataFrame) -> Dict[str, Any]:
         """完整的缠论处理流程"""
         try:
+            print("开始处理K线数据...")
             self._merge_k_lines(df)
+            print(
+                f"合并K线完成，共 {len(self.merged_df) if self.merged_df is not None else 0} 根K线"
+            )
+
             self.identify_fractals()
+            print(f"识别分型完成，共 {len(self.fractals)} 个分型")
+            # 输出分型信息
+            for fractal in self.fractals:
+                type_str = "顶" if fractal.type == FractalType.TOP else "底"
+                print(
+                    f"  分型 {fractal.idx}: {type_str}分型，索引={fractal.index}, 价格={fractal.price:.2f}"
+                )
+
             self.build_strokes()
+            print(f"构建笔完成，共 {len(self.strokes)} 笔")
+            # 输出笔信息
+            for stroke in self.strokes:
+                direction_str = "上涨" if stroke.direction == 1 else "下跌"
+                print(
+                    f"  笔 {stroke.idx}: [{stroke.fractal_start},{stroke.fractal_end}], "
+                    f"{direction_str} {stroke.start_price:.2f}->{stroke.end_price:.2f}, "
+                    f"索引 {stroke.start_index}->{stroke.end_index}"
+                )
+
             self.build_segments()
+            print(f"构建线段完成，共 {len(self.segments)} 个线段")
+            # 输出线段信息
+            for segment in self.segments:
+                direction_str = "上涨" if segment.direction == 1 else "下跌"
+                print(
+                    f"  线段 {segment.idx}: [{segment.fractal_start},{segment.fractal_end}], "
+                    f"{direction_str} {segment.start_price:.2f}->{segment.end_price:.2f}, "
+                    f"索引 {segment.start_index}->{segment.end_index}"
+                )
+
             self.build_centrals()
+            print(f"构建中枢完成，共 {len(self.centrals)} 个中枢")
 
             return {
                 "merged_df": self.merged_df,
@@ -334,9 +420,17 @@ class ChanlunProcessor:
                 "strokes": self.strokes,
                 "segments": self.segments,
                 "centrals": self.centrals,
+                "index_mapping": (
+                    {i: row["original_indices"] for i, row in self.merged_df.iterrows()}
+                    if self.merged_df is not None
+                    else {}
+                ),
             }
         except Exception as e:
             print(f"缠论处理出错: {e}")
+            import traceback
+
+            traceback.print_exc()
             return {
                 "merged_df": pd.DataFrame(),
                 "fractals": [],

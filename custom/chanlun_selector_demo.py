@@ -116,6 +116,10 @@ def run_chanlun_selection(stock_list: list, buy_point_type: int = 1,
     # 获取符合条件的股票
     selected_stocks = stock_filter.get_filtered_equity_pools()
     
+    # 显示筛选过程中的详细信息
+    print(f"筛选条件: 买点类型 {buy_point_type}, 主级别 {main_interval}, 次级别 {sub_interval}")
+    print(f"筛选结果: 共找到 {len(selected_stocks)} 只符合条件的股票")
+    
     return selected_stocks
 
 
@@ -148,47 +152,47 @@ if __name__ == "__main__":
     print("\n" + "="*50)
     print("使用港股进行缠论选股测试")
     
-    # 运行缠论选股器，日线级别寻找第一类买点
-    print("\n1. 日线级别第一类买点筛选:")
-    result = run_chanlun_selection(
-        hk_stocks, 
-        buy_point_type=1,
-        main_period="1y",
-        main_interval="1d",
-        sub_period="1mo",
-        sub_interval="30m"
-    )
-    
-    print("符合条件的股票:")
-    for stock in result:
-        print(f"- {stock}")
-    
-    # 运行缠论选股器，周线级别寻找第三类买点
-    print("\n2. 周线级别第三类买点筛选:")
-    result = run_chanlun_selection(
-        hk_stocks,
-        buy_point_type=3,
-        main_period="5y",
-        main_interval="1wk",
-        sub_period="1y",
-        sub_interval="1d"
-    )
-    
-    print("符合条件的股票:")
-    for stock in result:
-        print(f"- {stock}")
+    # 测试所有三种买点类型
+    for buy_point_type in [1, 2, 3]:
+        print(f"\n{buy_point_type}. 日线级别第{buy_point_type}类买点筛选:")
+        result = run_chanlun_selection(
+            hk_stocks, 
+            buy_point_type=buy_point_type,
+            main_period="1y",
+            main_interval="1d",
+            sub_period="1mo",
+            sub_interval="30m"
+        )
         
-    # 运行缠论选股器，30分钟级别寻找第二类买点
-    print("\n3. 30分钟级别第二类买点筛选:")
-    result = run_chanlun_selection(
-        hk_stocks,
-        buy_point_type=2,
-        main_period="1mo",
-        main_interval="30m",
-        sub_period="1wk",
-        sub_interval="5m"
-    )
+        print("符合条件的股票:")
+        for stock in result:
+            print(f"- {stock}")
+        
+        if not result:
+            print("- 无符合条件的股票")
+        
+    # 额外测试：尝试找到更多满足条件的股票
+    print("\n" + "="*50)
+    print("扩展测试：寻找更多可能的候选股票")
     
-    print("符合条件的股票:")
-    for stock in result:
-        print(f"- {stock}")
+    # 增加更多的港股股票进行测试
+    extended_hk_stocks = ["0700.HK", "0941.HK", "0005.HK", "1299.HK", "0883.HK", 
+                         "0016.HK", "0011.HK", "0001.HK", "0066.HK", "0857.HK"]
+    
+    for buy_point_type in [1, 2, 3]:
+        print(f"\n扩展测试 {buy_point_type}. 日线级别第{buy_point_type}类买点筛选:")
+        result = run_chanlun_selection(
+            extended_hk_stocks, 
+            buy_point_type=buy_point_type,
+            main_period="1y",
+            main_interval="1d",
+            sub_period="1mo",
+            sub_interval="30m"
+        )
+        
+        print("符合条件的股票:")
+        for stock in result:
+            print(f"- {stock}")
+        
+        if not result:
+            print("- 无符合条件的股票")
