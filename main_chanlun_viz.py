@@ -15,8 +15,8 @@ def print_banner():
     """打印程序启动横幅"""
     banner = """
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃           缠论技术分析可视化工具                 ┃
-┃        Chanlun Technical Analysis Visualizer   ┃
+┃           缠论技术分析可视化工具                ┃
+┃        Chanlun Technical Analysis Visualizer ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
     """
     print(banner)

@@ -167,6 +167,79 @@
    - 指标计算应在原始 K 线数据上进行
    - 需要结合价格确认、时间确认和级别确认三个要素
 
+### 5.3 技术指标实现方法
+
+使用 Python 实现背驰判断时，核心是比较两段同向走势（如两段连续的向上或向下线段）的极值点与对应 MACD 指标的数值。
+
+#### 1. MACD 指标计算
+
+首先，需要计算 MACD 指标。通常使用 `talib` 库或自定义函数实现：
+- **DIF (差离值)**: 短期（如 12 日）EMA - 长期（如 26 日）EMA
+- **DEA (讯号线)**: DIF 的 M 日（如 9 日）EMA
+- **MACD Histogram (柱状图)**: (DIF - DEA) * 2
+
+#### 2. 背驰判断逻辑
+
+**顶背驰 (Bearish Divergence)**:
+- **价格判断**: 当前顶分型的高点 > 前一个顶分型的高点。
+- **指标判断**:
+    - **DIF/DEA 背驰**: 当前顶分型对应的 DIF/DEA 值 < 前一个顶分型对应的 DIF/DEA 值。
+    - **MACD 面积背驰**: 从前一个顶分型到当前顶分型的 MACD 红柱面积总和 < 从更前一个底分型到前一个顶分型的 MACD 红柱面积总和。面积计算通过对区间内的 MACD 柱状图值求和得到。
+
+**底背驰 (Bullish Divergence)**:
+- **价格判断**: 当前底分型的低点 < 前一个底分型的低点。
+- **指标判断**:
+    - **DIF/DEA 背驰**: 当前底分型对应的 DIF/DEA 值 > 前一个底分型对应的 DIF/DEA 值。
+    - **MACD 面积背驰**: 从前一个底分型到当前底分型的 MACD 绿柱面积总和 > 从更前一个顶分型到前一个底分型的 MACD 绿柱面积总和。面积计算是对区间内 MACD 柱状图的绝对值求和。
+
+#### 3. Python 实现步骤示例
+
+以下是一个简化的伪代码，用于说明判断线段背驰的步骤：
+
+```python
+def check_divergence(segment1, segment2, macd_data):
+    """
+    检查两个同向线段之间是否存在背驰
+    :param segment1: 前一个线段 (e.g., 向上线段)
+    :param segment2: 当前线段 (e.g., 向上线段)
+    :param macd_data: 包含 DIF, DEA, MACD 值的 DataFrame
+    """
+    # 假设为顶背驰判断
+    if segment2.direction == 'up' and segment1.direction == 'up':
+        # 价格创新高
+        price_divergence = segment2.high > segment1.high
+
+        # MACD 指标判断 (以DIF为例)
+        macd_at_segment1_end = macd_data['DIF'].loc[segment1.end_k_index]
+        macd_at_segment2_end = macd_data['DIF'].loc[segment2.end_k_index]
+        macd_divergence = macd_at_segment2_end < macd_at_segment1_end
+
+        if price_divergence and macd_divergence:
+            return "顶背驰 (Bearish Divergence)"
+
+    # 假设为底背驰判断
+    elif segment2.direction == 'down' and segment1.direction == 'down':
+        # 价格创新低
+        price_divergence = segment2.low < segment1.low
+
+        # MACD 指标判断 (以DIF为例)
+        macd_at_segment1_end = macd_data['DIF'].loc[segment1.end_k_index]
+        macd_at_segment2_end = macd_data['DIF'].loc[segment2.end_k_index]
+        macd_divergence = macd_at_segment2_end > macd_at_segment1_end
+
+        if price_divergence and macd_divergence:
+            return "底背驰 (Bullish Divergence)"
+
+    return "无背驰"
+
+# 注意：实际应用中需处理好K线索引与数据对齐，并精确计算MACD面积。
+```
+
+#### 4. 注意事项
+- **数据对齐**: 确保 K 线数据、分型、笔、线段的索引与 MACD 数据的索引严格对齐。
+- **级别对应**: 背驰的判断必须在同一级别上进行，例如 5 分钟级别的线段背驰应使用 5 分钟 K 线计算的 MACD 指标。
+- **面积计算**: MACD 面积计算需要精确定义区间的起始点和终点，通常是两个相邻的反向分型之间。
+
 ## 6. 可视化技术要求
 
 ### 6.1 索引映射

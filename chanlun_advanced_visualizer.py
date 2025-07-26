@@ -150,6 +150,28 @@ class AdvancedChanlunVisualizer:
 
         return fig
 
+    def _calculate_macd_area(self, histogram, start_idx, end_idx):
+        """计算MACD柱状图面积，分别计算红柱和绿柱面积"""
+        if start_idx >= len(histogram) or end_idx >= len(histogram):
+            return {"red": 0, "green": 0}
+        
+        # 确保start_idx <= end_idx
+        if start_idx > end_idx:
+            start_idx, end_idx = end_idx, start_idx
+            
+        # 分别计算红柱和绿柱面积
+        red_area = 0  # 红柱面积（正值）
+        green_area = 0  # 绿柱面积（负值的绝对值）
+        
+        for i in range(start_idx, end_idx + 1):
+            if i < len(histogram):
+                if histogram.iloc[i] >= 0:
+                    red_area += histogram.iloc[i]
+                else:
+                    green_area += abs(histogram.iloc[i])
+        
+        return {"red": red_area, "green": green_area}
+
     def _identify_divergences(
         self, df, result, macd_result, index_map, merged_index_map
     ):
@@ -158,73 +180,155 @@ class AdvancedChanlunVisualizer:
 
         # 获取笔数据
         strokes = result["strokes"]
-        if len(strokes) < 2:
+        if len(strokes) < 3:  # 至少需要3笔才能判断背驰
             return divergences
 
         # 获取MACD数据
         macd_line = macd_result["macd_line"]
+        signal_line = macd_result["signal_line"]
+        histogram = macd_result["histogram"]
+
+        # 获取中枢数据
+        centrals = result["centrals"]
 
         # 检查相邻笔之间的背驰
-        for i in range(1, len(strokes)):
-            current_stroke = strokes[i]
-            prev_stroke = strokes[i - 1]
+        # 首先找出所有同向的笔段
+        up_strokes = []  # 上涨笔段
+        down_strokes = []  # 下跌笔段
+        
+        for i, stroke in enumerate(strokes):
+            if stroke.direction == 1:  # 上涨笔
+                up_strokes.append((i, stroke))
+            else:  # 下跌笔
+                down_strokes.append((i, stroke))
+        
+        # 检查上涨笔段之间的顶背驰
+        for i in range(1, len(up_strokes)):
+            current_idx, current_stroke = up_strokes[i]
+            prev_idx, prev_stroke = up_strokes[i-1]
+            
+            # 顶背驰：价格创新高，但MACD红柱面积减小
+            if current_stroke.end_price > prev_stroke.end_price:
+                # 获取笔段的起始和结束索引
+                current_start_idx = current_stroke.start_index
+                current_end_idx = current_stroke.end_index
+                prev_start_idx = prev_stroke.start_index
+                prev_end_idx = prev_stroke.end_index
+                
+                # 应用合并索引映射
+                if merged_index_map:
+                    current_start_idx = merged_index_map.get(current_start_idx, current_start_idx)
+                    current_end_idx = merged_index_map.get(current_end_idx, current_end_idx)
+                    prev_start_idx = merged_index_map.get(prev_start_idx, prev_start_idx)
+                    prev_end_idx = merged_index_map.get(prev_end_idx, prev_end_idx)
 
-            # 价格新高/新低
-            price_direction = 1 if current_stroke.direction == 1 else -1
-
-            # 获取对应位置的MACD值
-            # 转换索引以匹配绘图位置
-            current_idx = current_stroke.end_index
-            prev_idx = prev_stroke.end_index
-
-            # 应用合并索引映射
-            if merged_index_map:
-                current_idx = merged_index_map.get(current_idx, current_idx)
-                prev_idx = merged_index_map.get(prev_idx, prev_idx)
-
-            # 应用索引映射
-            if index_map:
-                current_idx = index_map.get(current_idx, current_idx)
-                prev_idx = index_map.get(prev_idx, prev_idx)
-
-            current_macd = (
-                macd_line.iloc[current_idx]
-                if current_idx < len(macd_line)
-                else macd_line.iloc[-1]
-            )
-            prev_macd = (
-                macd_line.iloc[prev_idx]
-                if prev_idx < len(macd_line)
-                else macd_line.iloc[-1]
-            )
-
-            # 背驰条件：价格创新高/低，但MACD没有相应创新高/低
-            if price_direction == 1:  # 上涨
-                if (
-                    current_stroke.end_price > prev_stroke.end_price
-                    and current_macd < prev_macd
-                ):
+                # 应用索引映射
+                if index_map:
+                    current_start_idx = index_map.get(current_start_idx, current_start_idx)
+                    current_end_idx = index_map.get(current_end_idx, current_end_idx)
+                    prev_start_idx = index_map.get(prev_start_idx, prev_start_idx)
+                    prev_end_idx = index_map.get(prev_end_idx, prev_end_idx)
+                
+                # 计算前一段的MACD面积
+                prev_area = self._calculate_macd_area(histogram, prev_start_idx, prev_end_idx)
+                # 计算当前段的MACD面积
+                current_area = self._calculate_macd_area(histogram, current_start_idx, current_end_idx)
+                
+                # 顶背驰判断：当前红柱面积小于前次
+                if current_area["red"] < prev_area["red"]:
+                    # 判断是否在中枢内
+                    in_central = False
+                    for central in centrals:
+                        if (central.start_index <= current_stroke.end_index <= central.end_index) or \
+                           (central.start_index <= prev_stroke.end_index <= central.end_index):
+                            in_central = True
+                            break
+                    
+                    if in_central:
+                        divergence_type = "盘整顶背驰"
+                    else:
+                        divergence_type = "趋势顶背驰"
+                    
+                    # 获取MACD值
+                    current_macd = (
+                        macd_line.iloc[current_end_idx]
+                        if current_end_idx < len(macd_line)
+                        else macd_line.iloc[-1]
+                    )
+                    
                     divergences.append(
                         {
-                            "type": "顶背驰",
-                            "stroke_index": i,
+                            "type": divergence_type,
+                            "stroke_index": current_idx,
                             "price_index": current_stroke.end_index,
                             "price": current_stroke.end_price,
                             "macd_value": current_macd,
+                            "macd_area": current_area,
                         }
                     )
-            else:  # 下跌
-                if (
-                    current_stroke.end_price < prev_stroke.end_price
-                    and current_macd > prev_macd
-                ):
+        
+        # 检查下跌笔段之间的底背驰
+        for i in range(1, len(down_strokes)):
+            current_idx, current_stroke = down_strokes[i]
+            prev_idx, prev_stroke = down_strokes[i-1]
+            
+            # 底背驰：价格创新低，但MACD绿柱面积增大
+            if current_stroke.end_price < prev_stroke.end_price:
+                # 获取笔段的起始和结束索引
+                current_start_idx = current_stroke.start_index
+                current_end_idx = current_stroke.end_index
+                prev_start_idx = prev_stroke.start_index
+                prev_end_idx = prev_stroke.end_index
+                
+                # 应用合并索引映射
+                if merged_index_map:
+                    current_start_idx = merged_index_map.get(current_start_idx, current_start_idx)
+                    current_end_idx = merged_index_map.get(current_end_idx, current_end_idx)
+                    prev_start_idx = merged_index_map.get(prev_start_idx, prev_start_idx)
+                    prev_end_idx = merged_index_map.get(prev_end_idx, prev_end_idx)
+
+                # 应用索引映射
+                if index_map:
+                    current_start_idx = index_map.get(current_start_idx, current_start_idx)
+                    current_end_idx = index_map.get(current_end_idx, current_end_idx)
+                    prev_start_idx = index_map.get(prev_start_idx, prev_start_idx)
+                    prev_end_idx = index_map.get(prev_end_idx, prev_end_idx)
+                
+                # 计算前一段的MACD面积
+                prev_area = self._calculate_macd_area(histogram, prev_start_idx, prev_end_idx)
+                # 计算当前段的MACD面积
+                current_area = self._calculate_macd_area(histogram, current_start_idx, current_end_idx)
+                
+                # 底背驰判断：当前绿柱面积大于前次
+                if current_area["green"] > prev_area["green"]:
+                    # 判断是否在中枢内
+                    in_central = False
+                    for central in centrals:
+                        if (central.start_index <= current_stroke.end_index <= central.end_index) or \
+                           (central.start_index <= prev_stroke.end_index <= central.end_index):
+                            in_central = True
+                            break
+                    
+                    if in_central:
+                        divergence_type = "盘整底背驰"
+                    else:
+                        divergence_type = "趋势底背驰"
+                    
+                    # 获取MACD值
+                    current_macd = (
+                        macd_line.iloc[current_end_idx]
+                        if current_end_idx < len(macd_line)
+                        else macd_line.iloc[-1]
+                    )
+                    
                     divergences.append(
                         {
-                            "type": "底背驰",
-                            "stroke_index": i,
+                            "type": divergence_type,
+                            "stroke_index": current_idx,
                             "price_index": current_stroke.end_index,
                             "price": current_stroke.end_price,
                             "macd_value": current_macd,
+                            "macd_area": current_area,
                         }
                     )
 
