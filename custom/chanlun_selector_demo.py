@@ -38,7 +38,20 @@ def get_stock_data(symbol, period="1y", interval="1d"):
     try:
         # 使用yfinance获取指定周期和间隔的数据
         ticker = yf.Ticker(symbol)
-        data = ticker.history(period=period, interval=interval)
+        # 添加超时处理，防止API调用卡死
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("获取股票数据超时")
+        
+        # 设置5秒超时
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(5)
+        
+        try:
+            data = ticker.history(period=period, interval=interval)
+        finally:
+            signal.alarm(0)  # 取消超时
         
         # 确保列名正确
         if not data.empty:
@@ -53,6 +66,9 @@ def get_stock_data(symbol, period="1y", interval="1d"):
             # 确保有time_key列，直接使用索引（已经是datetime类型）
             data['time_key'] = data.index
         return data
+    except TimeoutError:
+        print(f"获取{symbol}数据超时")
+        return pd.DataFrame()
     except Exception as e:
         print(f"获取{symbol}数据时出错: {e}")
         return pd.DataFrame()

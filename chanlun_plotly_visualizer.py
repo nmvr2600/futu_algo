@@ -25,16 +25,16 @@ class PlotlyChanlunVisualizer:
     def __init__(self):
         # 颜色配置
         self.colors = {
-            "up_stroke": "#1f77b4",
-            "down_stroke": "#ff7f0e",
-            "up_segment": "#ff4757",
-            "down_segment": "#2ed573",
-            "top_fractal": "#d62728",
-            "bottom_fractal": "#2ca02c",
-            "central": "#9467bd",
-            "central_fill": "#e6e6fa",
-            "bullish": "#26a69a",
-            "bearish": "#ef5350",
+            "up_stroke": "#1f77b4",      # 蓝色笔
+            "down_stroke": "#ff7f0e",    # 橙色笔
+            "up_segment": "#ff4757",     # 红色线段
+            "down_segment": "#2ed573",   # 绿色线段
+            "top_fractal": "#d62728",    # 红色顶分型
+            "bottom_fractal": "#2ca02c", # 绿色底分型
+            "central": "#9467bd",        # 紫色中枢
+            "central_fill": "#e6e6fa",   # 浅紫色中枢填充
+            "bullish": "#26a69a",        # 牛市颜色
+            "bearish": "#ef5350",        # 熊市颜色
         }
     
     def create_comprehensive_chart(self, df, result, stock_code, save_path=None):
@@ -131,20 +131,30 @@ class PlotlyChanlunVisualizer:
         if top_fractals:
             top_time_keys = [f.time_key for f in top_fractals]
             top_prices = [f.price for f in top_fractals]
+            top_numbers = [str(f.idx) for f in top_fractals]  # 分型编号
             
+            # 绘制顶分型标记和编号
             fig.add_trace(
                 go.Scatter(
                     x=top_time_keys,
                     y=top_prices,
-                    mode='markers',
+                    mode='markers+text',
                     marker=dict(
                         symbol='triangle-down',
-                        size=10,
+                        size=12,
                         color=self.colors["top_fractal"],
                         line=dict(width=1, color='black')
                     ),
+                    text=top_numbers,
+                    textposition="top center",
+                    textfont=dict(
+                        size=11,
+                        color='white',
+                        family='Arial Black'
+                    ),
                     name="顶分型",
-                    hovertemplate='<b>顶分型</b><br>价格: %{y:.2f}<extra></extra>'
+                    hovertemplate='<b>顶分型 #%{text}</b><br>价格: %{y:.2f}<extra></extra>',
+                    showlegend=False
                 ),
                 row=row, col=col
             )
@@ -153,20 +163,30 @@ class PlotlyChanlunVisualizer:
         if bottom_fractals:
             bottom_time_keys = [f.time_key for f in bottom_fractals]
             bottom_prices = [f.price for f in bottom_fractals]
+            bottom_numbers = [str(f.idx) for f in bottom_fractals]  # 分型编号
             
+            # 绘制底分型标记和编号
             fig.add_trace(
                 go.Scatter(
                     x=bottom_time_keys,
                     y=bottom_prices,
-                    mode='markers',
+                    mode='markers+text',
                     marker=dict(
                         symbol='triangle-up',
-                        size=10,
+                        size=12,
                         color=self.colors["bottom_fractal"],
                         line=dict(width=1, color='black')
                     ),
+                    text=bottom_numbers,
+                    textposition="bottom center",
+                    textfont=dict(
+                        size=11,
+                        color='white',
+                        family='Arial Black'
+                    ),
                     name="底分型",
-                    hovertemplate='<b>底分型</b><br>价格: %{y:.2f}<extra></extra>'
+                    hovertemplate='<b>底分型 #%{text}</b><br>价格: %{y:.2f}<extra></extra>',
+                    showlegend=False
                 ),
                 row=row, col=col
             )
@@ -194,10 +214,10 @@ class PlotlyChanlunVisualizer:
                     x=[start_time, end_time],
                     y=[start_price, end_price],
                     mode='lines+markers',
-                    line=dict(color=color, width=2, dash="dash"),
-                    marker=dict(size=6, color=color),
-                    name=f"笔 {i+1}",
-                    hovertemplate=f'<b>笔 {i+1}</b><br>方向: {"上涨" if stroke.direction == 1 else "下跌"}<br>价格: %{{y:.2f}}<extra></extra>',
+                    line=dict(color=color, width=2, dash="dash"),  # 笔较细，虚线
+                    marker=dict(size=6, color=color, symbol="circle"),  # 圆形标记
+                    name=f"笔 {stroke.idx}",
+                    hovertemplate=f'<b>笔 {stroke.idx}</b><br>方向: {"上涨" if stroke.direction == 1 else "下跌"}<br>价格: %{{y:.2f}}<extra></extra>',
                     showlegend=False
                 ),
                 row=row, col=col
@@ -226,10 +246,10 @@ class PlotlyChanlunVisualizer:
                     x=[start_time, end_time],
                     y=[start_price, end_price],
                     mode='lines+markers',
-                    line=dict(color=color, width=4),
-                    marker=dict(size=8, color=color),
-                    name=f"线段 {i+1}",
-                    hovertemplate=f'<b>线段 {i+1}</b><br>方向: {"上涨" if segment.direction == 1 else "下跌"}<br>价格: %{{y:.2f}}<extra></extra>',
+                    line=dict(color=color, width=4, dash="solid"),  # 线段更粗，实线
+                    marker=dict(size=8, color=color, symbol="diamond"),  # 菱形标记
+                    name=f"线段 {segment.idx}",
+                    hovertemplate=f'<b>线段 {segment.idx}</b><br>方向: {"上涨" if segment.direction == 1 else "下跌"}<br>价格: %{{y:.2f}}<extra></extra>',
                     showlegend=False
                 ),
                 row=row, col=col
@@ -369,6 +389,17 @@ def generate_plotly_chart(
         # 缠论分析
         processor = ChanlunProcessor()
         result = processor.process(data)
+        
+        # 检查处理结果
+        if not result or not isinstance(result, dict):
+            print("缠论分析返回无效结果")
+            return None
+        
+        # 检查关键数据是否存在
+        required_keys = ['fractals', 'strokes', 'centrals']
+        for key in required_keys:
+            if key not in result or result[key] is None:
+                result[key] = []
         
         # 创建可视化器
         visualizer = PlotlyChanlunVisualizer()
